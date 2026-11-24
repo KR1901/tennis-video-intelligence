@@ -28,7 +28,7 @@ class VideoApi(
     private companion object {
         const val UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024
         const val MAX_CHUNK_RETRIES = 3
-        const val MAX_UPLOAD_BYTES = 10L * 1024L * 1024L * 1024L
+        const val MAX_UPLOAD_BYTES = 4_768L * 1024L * 1024L
     }
 
     fun health(): JSONObject = requestJson("/health", "GET")
@@ -45,7 +45,7 @@ class VideoApi(
             throw IOException("Android could not determine the selected video's file size.")
         }
         if (fileSize > MAX_UPLOAD_BYTES) {
-            throw IOException("This video is larger than the 10 GiB upload limit.")
+            throw IOException("This video is larger than the 5 GB upload limit.")
         }
 
         val preferenceKey = "session_" + UUID.nameUUIDFromBytes(
