@@ -12,6 +12,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -43,6 +44,15 @@ class LocalAnalysisWorker(
             )
             return@withContext Result.failure()
         }
+
+        val currentProgress = project.optInt("progress_pct", 0)
+        LocalProjectStore.updateProgress(
+            applicationContext,
+            projectId,
+            "processing",
+            currentProgress
+        )
+        setProgress(workDataOf(KEY_PROGRESS_PCT to currentProgress))
 
         val nextStartMs = min(durationMs, startMs + CHUNK_DURATION_MS)
         val retriever = MediaMetadataRetriever()
@@ -184,6 +194,8 @@ class LocalAnalysisWorker(
                     }
                 }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             LocalProjectStore.updateProgress(
                 applicationContext,
@@ -236,6 +248,9 @@ class LocalAnalysisWorker(
             if (completed) "completed" else "processing",
             progress
         )
+        setProgress(workDataOf(KEY_PROGRESS_PCT to progress))
+
+        if (isStopped) return@withContext Result.retry()
 
         if (!completed) {
             val nextRequest = OneTimeWorkRequestBuilder<LocalAnalysisWorker>()
@@ -369,6 +384,7 @@ class LocalAnalysisWorker(
         const val KEY_PROJECT_ID = "project_id"
         const val KEY_START_MS = "start_ms"
         const val KEY_FRAME_INTERVAL_MS = "frame_interval_ms"
+        const val KEY_PROGRESS_PCT = "progress_pct"
         private const val DEFAULT_FRAME_INTERVAL_MS = 200L
         private const val CHUNK_DURATION_MS = 5_000L
         private const val POSE_SAMPLE_EVERY_N_FRAMES = 2
