@@ -1183,6 +1183,40 @@ private fun LocalTennisVideoApp() {
                                 fontSize = 11.sp
                             )
                             Text(event.optString("note"), color = AppMuted, fontSize = 11.sp)
+                            OutlinedButton(
+                                onClick = {
+                                    val item = project
+                                    if (item != null) scope.launch {
+                                        val time = event.optLong("timestamp_ms").coerceIn(0L, durationMs)
+                                        busy = true
+                                        try {
+                                            val frame = withContext(Dispatchers.IO) {
+                                                LocalVideoInspector.frameAt(
+                                                    context,
+                                                    Uri.parse(item.optString("content_uri")),
+                                                    time
+                                                )
+                                            }
+                                            if (frame != null) {
+                                                frameTimestampMs = time
+                                                timestampText = String.format(Locale.US, "%.1f", time / 1000.0)
+                                                frameBitmap = frame
+                                                showVideoPlayback = false
+                                                message = "Opened event frame at " + formatDuration(time) +
+                                                    ". Review the ball/player overlay and correct the event label if needed."
+                                            } else {
+                                                message = "Could not decode the source frame at this event timestamp."
+                                            }
+                                        } catch (error: Exception) {
+                                            message = "Could not open event frame: " + (error.message ?: "unknown error")
+                                        } finally {
+                                            busy = false
+                                        }
+                                    }
+                                },
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("View source frame at this event") }
                             if (eventStatus == "needs_review") {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedButton(
