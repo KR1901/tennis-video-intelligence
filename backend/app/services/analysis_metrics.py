@@ -110,7 +110,11 @@ def _rally_sequences(events: list[dict[str, Any]]) -> tuple[list[dict[str, Any]]
                     "contact_index": event.get("rally_contact_index"),
                 }
             )
-        elif event_type == "point_end" and active is not None and timestamp >= active["start_seconds"]:
+        elif (
+            event_type == "point_end"
+            and active is not None
+            and timestamp >= active["start_seconds"]
+        ):
             active["end_seconds"] = timestamp
             sequences.append(active)
             active = None
@@ -214,7 +218,9 @@ def calculate_reviewed_match_metrics(job: dict[str, Any]) -> dict[str, Any]:
     return {
         "accepted_event_count": len(events),
         "pending_or_rejected_event_count": max(0, total_event_count - len(events)),
-        "review_coverage_pct": 100.0 * len(events) / total_event_count if total_event_count else 0.0,
+        "review_coverage_pct": (
+            100.0 * len(events) / total_event_count if total_event_count else 0.0
+        ),
         "serve_placement": {
             "confirmed_serves": len(serve_bounces),
             "recorded_attempts": len(serve_events),
@@ -225,7 +231,9 @@ def calculate_reviewed_match_metrics(job: dict[str, Any]) -> dict[str, Any]:
             "serve_in_percentage": serve_in_percentage,
             "zones": serve_zone_map,
             "positions": _positions(serve_bounces),
-            "zone_definition": "Coarse x-coordinate bands within singles width and service-box depth",
+            "zone_definition": (
+                "Coarse x-coordinate bands within singles width and service-box depth"
+            ),
             "status": "based_on_human_review",
         },
         "shot_placement": {
@@ -247,11 +255,15 @@ def calculate_reviewed_match_metrics(job: dict[str, Any]) -> dict[str, Any]:
         },
         "serve_plus_one": {
             "reviewed_count": sum(value["serve_plus_one"] for value in by_player.values()),
-            "player_labels": {player: value["serve_plus_one"] for player, value in by_player.items()},
+            "player_labels": {
+                player: value["serve_plus_one"] for player, value in by_player.items()
+            },
         },
         "return_plus_one": {
             "reviewed_count": sum(value["return_plus_one"] for value in by_player.values()),
-            "player_labels": {player: value["return_plus_one"] for player, value in by_player.items()},
+            "player_labels": {
+                player: value["return_plus_one"] for player, value in by_player.items()
+            },
         },
         "winner_error_classification": {
             "status": "based_on_human_review",
