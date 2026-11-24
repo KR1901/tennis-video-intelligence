@@ -121,10 +121,14 @@ internal object LocalProjectStore {
     }
 
     @Synchronized
-    fun prepareAnalysis(context: Context, id: String) {
+    fun prepareAnalysis(context: Context, id: String, runId: String) {
+        val queuedAtMs = System.currentTimeMillis()
         update(context, id) { project ->
+            project.put("analysis_run_id", runId)
             project.put("analysis_status", "queued")
             project.put("analysis_error", "")
+            project.put("analysis_queued_at_ms", queuedAtMs)
+            project.put("analysis_last_activity_ms", 0L)
             project.put("progress_pct", 0)
             project.put("samples", JSONArray())
             project.put("sample_count", 0)
@@ -134,13 +138,27 @@ internal object LocalProjectStore {
         sampleLogFile(context, id).delete()
     }
 
+    @Synchronized
+    fun isCurrentAnalysisRun(context: Context, id: String, runId: String): Boolean {
+        val storedRunId = load(context, id)?.optString("analysis_run_id").orEmpty()
+        // Projects created before run IDs were introduced may finish their legacy run.
+        // Once a retry writes a new ID, any old worker is rejected.
+        return storedRunId.isBlank() || storedRunId == runId
+    }
+
     /**
      * Append the full analysis stream to NDJSON, retaining only a bounded tail in project JSON.
      * This avoids rewriting a multi-hour timeline on every WorkManager chunk.
      */
     @Synchronized
-    fun appendSamples(context: Context, id: String, additions: List<JSONObject>) {
+    fun appendSamples(
+        context: Context,
+        id: String,
+        additions: List<JSONObject>,
+        expectedRunId: String? = null
+    ) {
         val project = load(context, id) ?: return
+        if (!expectedRunId.isNullOrBlank() && !isCurrentAnalysisRun(context, id, expectedRunId)) return
         val lastTimestamp = project.optLong("last_sample_timestamp_ms", -1L)
         val accepted = additions
             .filter { it.optLong("timestamp_ms", -1L) > lastTimestamp }
@@ -170,10 +188,13 @@ internal object LocalProjectStore {
         id: String,
         status: String,
         progressPct: Int,
-        error: String = ""
+        error: String = "",
+        expectedRunId: String? = null
     ) {
+        if (!expectedRunId.isNullOrBlank() && !isCurrentAnalysisRun(context, id, expectedRunId)) return
         update(context, id) { project ->
             project.put("analysis_status", status)
+            project.put("analysis_last_activity_ms", System.currentTimeMillis())
             project.put("progress_pct", progressPct.coerceIn(0, 100))
             project.put("analysis_error", error)
         }
@@ -364,7 +385,13 @@ internal object LocalProjectStore {
     }
 
     @Synchronized
-    fun appendEventCandidates(context: Context, id: String, additions: List<JSONObject>) {
+    fun appendEventCandidates(
+        context: Context,
+        id: String,
+        additions: List<JSONObject>,
+        expectedRunId: String? = null
+    ) {
+        if (!expectedRunId.isNullOrBlank() && !isCurrentAnalysisRun(context, id, expectedRunId)) return
         update(context, id) { project ->
             val events = project.optJSONArray("events") ?: JSONArray()
             val cornersJson = project.optJSONArray("court_corners") ?: JSONArray()

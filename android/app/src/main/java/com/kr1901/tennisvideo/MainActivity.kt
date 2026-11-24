@@ -70,6 +70,8 @@ import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
@@ -134,6 +136,8 @@ private fun LocalTennisVideoApp() {
     var manualEventNote by remember { mutableStateOf("") }
     var matchAnalytics by remember { mutableStateOf<TennisMatchAnalytics?>(null) }
     var frameIntervalMs by remember { mutableStateOf(200L) }
+    var analysisWorkState by remember { mutableStateOf<WorkInfo.State?>(null) }
+    var analysisWorkQuerySucceeded by remember { mutableStateOf(false) }
     var courtRevision by remember { mutableStateOf(0) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var showVideoPlayback by remember { mutableStateOf(false) }
@@ -251,6 +255,29 @@ private fun LocalTennisVideoApp() {
             delay(1500L)
             val latest = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
             if (latest != null) project = latest
+        }
+    }
+
+    // Observe WorkManager itself; the JSON status is not proof that a worker is running.
+    LaunchedEffect(projectId) {
+        analysisWorkState = null
+        analysisWorkQuerySucceeded = false
+        val id = projectId ?: return@LaunchedEffect
+        val workManager = WorkManager.getInstance(context)
+        while (isActive) {
+            val infos = withContext(Dispatchers.IO) {
+                runCatching {
+                    workManager.getWorkInfosByTag(LocalAnalysisWorker.tag(id)).get()
+                }.getOrNull()
+            }
+            if (infos != null) {
+                val active = infos.firstOrNull { it.state == WorkInfo.State.RUNNING }
+                    ?: infos.firstOrNull { it.state == WorkInfo.State.ENQUEUED }
+                    ?: infos.firstOrNull { it.state == WorkInfo.State.BLOCKED }
+                analysisWorkState = active?.state
+                analysisWorkQuerySucceeded = true
+            }
+            delay(2_000L)
         }
     }
 
@@ -513,6 +540,22 @@ private fun LocalTennisVideoApp() {
     val status = project?.optString("analysis_status", "not_started") ?: "not_started"
     val progress = project?.optInt("progress_pct", 0) ?: 0
     val durationMs = project?.optLong("duration_ms", 0L) ?: 0L
+    val analysisQueuedAtMs = project?.optLong("analysis_queued_at_ms", 0L) ?: 0L
+    val analysisLastActivityMs = project?.optLong("analysis_last_activity_ms", 0L) ?: 0L
+    val analysisNeedsRecovery = AnalysisWorkRecovery.shouldOfferRetry(
+        projectStatus = status,
+        workState = analysisWorkState,
+        workQuerySucceeded = analysisWorkQuerySucceeded,
+        queuedAtMs = analysisQueuedAtMs,
+        lastActivityAtMs = analysisLastActivityMs,
+        nowMs = System.currentTimeMillis()
+    )
+    val analysisWorkLabel = when (analysisWorkState) {
+        WorkInfo.State.RUNNING -> "Running on this device"
+        WorkInfo.State.ENQUEUED -> "Waiting in Android's work queue"
+        WorkInfo.State.BLOCKED -> "Waiting for prerequisite work"
+        else -> "No active Android worker detected"
+    }
     val previewOverlaySample = (0 until recentSampleCount)
         .mapNotNull { sampleArray.optJSONObject(it) }
         .minByOrNull { abs(it.optLong("timestamp_ms") - frameTimestampMs) }
@@ -1137,23 +1180,8 @@ private fun LocalTennisVideoApp() {
                                     busy = true
                                     try {
                                         withContext(Dispatchers.IO) {
-                                            LocalProjectStore.prepareAnalysis(context, id)
+                                            enqueueLocalAnalysis(context, id, frameIntervalMs)
                                         }
-                                        val request = OneTimeWorkRequestBuilder<LocalAnalysisWorker>()
-                                            .setInputData(
-                                                workDataOf(
-                                                    LocalAnalysisWorker.KEY_PROJECT_ID to id,
-                                                    LocalAnalysisWorker.KEY_START_MS to 0L,
-                                                    LocalAnalysisWorker.KEY_FRAME_INTERVAL_MS to frameIntervalMs
-                                                )
-                                            )
-                                            .addTag(LocalAnalysisWorker.tag(id))
-                                            .build()
-                                        WorkManager.getInstance(context).enqueueUniqueWork(
-                                            LocalAnalysisWorker.workName(id, 0L),
-                                            ExistingWorkPolicy.KEEP,
-                                            request
-                                        )
                                         project = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
                                         message = "On-device analysis queued at " +
                             (1000L / frameIntervalMs).toString() + " fps. Android can continue saved work after you leave the app."
@@ -1181,6 +1209,45 @@ private fun LocalTennisVideoApp() {
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp
                         )
+                        if (status == "queued" || status == "processing") {
+                            Text(
+                                "Android worker: " + analysisWorkLabel,
+                                color = AppMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                        if (analysisNeedsRecovery) {
+                            Text(
+                                "Analysis has stopped making progress. Retrying will cancel the old queued work and submit a fresh request.",
+                                color = Color(0xFFB3261E),
+                                fontSize = 12.sp
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    val id = projectId
+                                    if (id != null) scope.launch {
+                                        busy = true
+                                        try {
+                                            withContext(Dispatchers.IO) {
+                                                enqueueLocalAnalysis(context, id, frameIntervalMs)
+                                            }
+                                            project = withContext(Dispatchers.IO) {
+                                                LocalProjectStore.load(context, id)
+                                            }
+                                            message = "Stalled analysis work was replaced. The new on-device run has been submitted."
+                                        } catch (error: Exception) {
+                                            message = "Could not retry local analysis: " + (error.message ?: "unknown error")
+                                        } finally {
+                                            busy = false
+                                        }
+                                    }
+                                },
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Retry analysis")
+                            }
+                        }
                         if (sampleCount > 0) {
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 MetricValue("Frames sampled", sampleCount.toString())
@@ -1809,4 +1876,36 @@ private fun formatBytes(bytes: Long): String {
     if (bytes < 0L) return "Size unavailable"
     val value = bytes.toDouble() / (1024.0 * 1024.0)
     return String.format(Locale.US, "%.1f MiB", value)
+}
+
+
+/**
+ * Replace stale requests for this project before enqueuing a fresh user-requested run.
+ * The first chunk is expedited when Android quota permits and safely falls back to
+ * ordinary WorkManager scheduling when expedited quota is unavailable.
+ */
+private fun enqueueLocalAnalysis(context: Context, projectId: String, frameIntervalMs: Long) {
+    val workManager = WorkManager.getInstance(context)
+    workManager.cancelAllWorkByTag(LocalAnalysisWorker.tag(projectId)).result.get()
+    val runId = UUID.randomUUID().toString()
+    LocalProjectStore.prepareAnalysis(context, projectId, runId)
+
+    val request = OneTimeWorkRequestBuilder<LocalAnalysisWorker>()
+        .setInputData(
+            workDataOf(
+                LocalAnalysisWorker.KEY_PROJECT_ID to projectId,
+                LocalAnalysisWorker.KEY_RUN_ID to runId,
+                LocalAnalysisWorker.KEY_START_MS to 0L,
+                LocalAnalysisWorker.KEY_FRAME_INTERVAL_MS to frameIntervalMs
+            )
+        )
+        .addTag(LocalAnalysisWorker.tag(projectId))
+        .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        .build()
+
+    workManager.enqueueUniqueWork(
+        LocalAnalysisWorker.workName(projectId, runId, 0L),
+        ExistingWorkPolicy.REPLACE,
+        request
+    ).result.get()
 }
