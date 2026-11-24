@@ -244,11 +244,7 @@ async def review_analysis_event(
     if not isinstance(events, list):
         raise HTTPException(status_code=500, detail="Analysis event list is malformed.")
     event = next(
-        (
-            item
-            for item in events
-            if isinstance(item, dict) and item.get("event_id") == event_id
-        ),
+        (item for item in events if isinstance(item, dict) and item.get("event_id") == event_id),
         None,
     )
     if event is None:
