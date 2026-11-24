@@ -52,3 +52,17 @@ The app's development manifest currently permits cleartext HTTP for local testin
 7. Tap a player's feet / ground-contact point, choose near or far court end, and request its signed baseline distance.
 
 This prototype uses manual taps. It does not yet detect court lines or players automatically, and it is not a finished production app.
+
+
+## Release signing (Android)
+
+The release workflow builds version `0.2.0`. A signed release is produced only when the repository has all four Actions secrets configured:
+
+- `ANDROID_KEYSTORE_BASE64` — base64-encoded keystore file.
+- `ANDROID_KEYSTORE_PASSWORD` — keystore password.
+- `ANDROID_KEY_ALIAS` — signing-key alias.
+- `ANDROID_KEY_PASSWORD` — signing-key password.
+
+Store the keystore securely offline and back it up. Do not commit it to the public repository. The same signing key must be retained for future app updates. Without all four secrets the workflow produces an explicitly labelled **unsigned** release APK artifact; it will not publish that file as a production GitHub Release.
+
+Run the workflow from GitHub Actions → Android Release APK → Run workflow. When signing is configured, the workflow uploads the signed APK and publishes the `v0.2.0` GitHub Release. When signing is absent, it only uploads the unsigned APK for inspection; that artifact is not installable as a normal production update until signed with your release key.
