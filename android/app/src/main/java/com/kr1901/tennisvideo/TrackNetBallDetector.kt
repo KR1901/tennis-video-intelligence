@@ -3,9 +3,9 @@ package com.kr1901.tennisvideo
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
-import com.microsoft.onnxruntime.OnnxTensor
-import com.microsoft.onnxruntime.OrtEnvironment
-import com.microsoft.onnxruntime.OrtSession
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -24,12 +24,12 @@ internal class TrackNetBallDetector(context: Context) : AutoCloseable {
 
     init {
         val model = copyModelAsset(context, MODEL_ASSET_PATH, MODEL_FILE_NAME)
-        val options = OrtSession.SessionOptions().apply {
-            setIntraOpNumThreads(INFERENCE_THREADS)
-            setInterOpNumThreads(1)
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+        session = OrtSession.SessionOptions().use { options ->
+            options.setIntraOpNumThreads(INFERENCE_THREADS)
+            options.setInterOpNumThreads(1)
+            options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+            environment.createSession(model.absolutePath, options)
         }
-        session = environment.createSession(model.absolutePath, options)
         inputName = session.inputNames.firstOrNull()
             ?: error("TrackNet ONNX model does not expose an input tensor")
     }
@@ -73,7 +73,7 @@ internal class TrackNetBallDetector(context: Context) : AutoCloseable {
             session.run(mapOf(inputName to tensor)).use { result ->
                 val output = result.get(0) as? OnnxTensor
                     ?: error("TrackNet returned an unexpected output")
-                val heatmap = output.floatBuffer
+                val heatmap = output.getFloatBuffer() ?: error("TrackNet output was not a float heatmap")
                 if (heatmap.remaining() < OUTPUT_PIXELS) {
                     error("TrackNet output was shorter than the declared 640 x 360 heatmap")
                 }
