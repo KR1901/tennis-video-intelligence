@@ -82,9 +82,9 @@ internal class OnDevicePoseAnalyzer(context: Context) : AutoCloseable {
         if (visible.size < MIN_VISIBLE_LANDMARKS) return null
 
         val confidence = (
-            footPoints.map { it.third }.average() *
-                visible.size.toFloat() / LANDMARK_COUNT.toFloat()
-            ).coerceIn(0f, 1f)
+            footPoints.map { it.third.toDouble() }.average() *
+                visible.size.toDouble() / LANDMARK_COUNT.toDouble()
+            ).coerceIn(0.0, 1.0).toFloat()
 
         val leftWrist = pointOrFallback(landmarks, LEFT_WRIST)
         val rightWrist = pointOrFallback(landmarks, RIGHT_WRIST)
