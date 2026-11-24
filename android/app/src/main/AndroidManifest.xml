@@ -5,6 +5,7 @@
 
     <application
         android:allowBackup="false"
+        android:usesCleartextTraffic="false"
         android:label="Tennis Video Intelligence"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
