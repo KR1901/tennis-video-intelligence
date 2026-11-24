@@ -297,15 +297,10 @@ private fun TennisVideoApp() {
                 analysisSummary = null
                 eventCandidates.clear()
                 analysisStatus = "Not started"
-                videoId = null
                 calibrationId = null
                 frameBitmap = null
                 calibrationPoints.clear()
                 selectedPlayerPoint = null
-                analysisId = null
-                analysisSummary = null
-                eventCandidates.clear()
-                analysisStatus = "Not started"
                 statusMessage = "Video selected. Upload it to start."
             }
         }
