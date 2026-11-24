@@ -44,6 +44,9 @@ internal object LocalProjectStore {
             .put("analysis_status", "not_started")
             .put("progress_pct", 0)
             .put("samples", JSONArray())
+            .put("sample_count", 0)
+            .put("last_sample_timestamp_ms", -1L)
+            .put("events", JSONArray())
             .put("court_corners", JSONArray())
             .put("manual_positions", JSONArray())
         save(context, project)
@@ -73,26 +76,37 @@ internal object LocalProjectStore {
             project.put("analysis_error", "")
             project.put("progress_pct", 0)
             project.put("samples", JSONArray())
+            project.put("sample_count", 0)
+            project.put("last_sample_timestamp_ms", -1L)
+            project.put("events", JSONArray())
+            sampleLogFile(context, id).delete()
         }
     }
 
     @Synchronized
     fun appendSamples(context: Context, id: String, additions: List<JSONObject>) {
-        update(context, id) { project ->
-            val samples = project.optJSONArray("samples") ?: JSONArray()
-            val knownTimes = HashSet<Long>()
-            for (index in 0 until samples.length()) {
-                knownTimes.add(samples.optJSONObject(index)?.optLong("timestamp_ms") ?: -1L)
-            }
-            additions.forEach { sample ->
-                val timestamp = sample.optLong("timestamp_ms", -1L)
-                if (timestamp >= 0L && !knownTimes.contains(timestamp)) {
-                    samples.put(sample)
-                    knownTimes.add(timestamp)
-                }
-            }
-            project.put("samples", samples)
+        val project = load(context, id) ?: return
+        val lastTimestamp = project.optLong("last_sample_timestamp_ms", -1L)
+        val accepted = additions
+            .filter { it.optLong("timestamp_ms", -1L) > lastTimestamp }
+            .sortedBy { it.optLong("timestamp_ms") }
+        if (accepted.isEmpty()) return
+
+        sampleLogFile(context, id).appendText(
+            accepted.joinToString(separator = "", postfix = "") { it.toString() + "\\n" }
+        )
+
+        val samples = project.optJSONArray("samples") ?: JSONArray()
+        accepted.forEach(samples::put)
+        val retained = JSONArray()
+        val firstRetained = (samples.length() - MAX_RECENT_SAMPLES).coerceAtLeast(0)
+        for (index in firstRetained until samples.length()) {
+            retained.put(samples.getJSONObject(index))
         }
+        project.put("samples", retained)
+        project.put("sample_count", project.optInt("sample_count", 0) + accepted.size)
+        project.put("last_sample_timestamp_ms", accepted.last().optLong("timestamp_ms"))
+        save(context, project)
     }
 
     @Synchronized
@@ -176,6 +190,9 @@ internal object LocalProjectStore {
         return csv.toString()
     }
 
+    private fun sampleLogFile(context: Context, id: String): File =
+        File(directory(context), id + ".samples.ndjson")
+
     private fun update(context: Context, id: String, change: (JSONObject) -> Unit) {
         val project = load(context, id) ?: return
         change(project)
@@ -186,4 +203,7 @@ internal object LocalProjectStore {
         val file = projectFile(context, project.optString("id"))
         file.writeText(project.toString())
     }
+
+    private const val MAX_RECENT_SAMPLES = 600
+    private const val MAX_RECENT_EVENTS = 1_000
 }
