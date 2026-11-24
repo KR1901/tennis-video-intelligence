@@ -32,6 +32,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -505,7 +506,7 @@ private fun LocalTennisVideoApp() {
                     ) {
                         Text("Choose video from this device")
                     }
-                    Divider()
+                    HorizontalDivider()
                     OutlinedTextField(
                         value = directVideoUrl,
                         onValueChange = { directVideoUrl = it },
