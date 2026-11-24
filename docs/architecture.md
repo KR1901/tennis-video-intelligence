@@ -34,7 +34,9 @@ The current code implements only the first local-development slice: FastAPI heal
 
 ## Coordinate system
 
-Use a court-fixed coordinate system in metres. Define the court origin consistently (recommended: centre of the net projected onto the court plane), the x-axis along the baseline, and the y-axis from net toward each baseline. Store the chosen convention and court dimensions with every calibration.
+The implemented court-plane convention uses metres, with the origin at the centre of the net, the x-axis across the court width, and the y-axis along the court length. The near half is positive y and the far half is negative y. The baselines are therefore at +11.885 m and -11.885 m. Doubles boundaries are at x = ±5.485 m; singles sidelines are at x = ±4.115 m. The overall court length is 23.77 m, singles width is 8.23 m, and doubles width is 10.97 m, following ITF Rule 1 and Appendix IX (https://www.itftennis.com/media/15604/atp-2026-rulebook.pdf).
+
+The new `court_geometry` service estimates an image-to-court homography from at least four manually or automatically identified point correspondences and projects image-space foot points into this coordinate system. The baseline-distance utility returns positive values behind the baseline, zero on the line and negative values inside the court. A valid transform still depends on correct, correctly paired court keypoints; automatic keypoint detection and camera-segment handling are not implemented yet.
 
 A court-keypoint detector identifies visible line intersections. A homography maps image-plane coordinates to the court plane. For a camera that pans, zooms or cuts, calibration must be re-estimated or associated with a stable camera segment. Measurements should be marked unavailable when calibration is invalid.
 
