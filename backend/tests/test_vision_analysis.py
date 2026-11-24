@@ -100,12 +100,23 @@ def test_analysis_worker_persists_completed_job(tmp_path, monkeypatch) -> None:
                 return float(len(self.frames))
             return 0.0
 
-        def read(self):
+        def grab(self) -> bool:
             if self.index >= len(self.frames):
-                return False, None
-            frame = self.frames[self.index]
+                self.current_frame = None
+                return False
+            self.current_frame = self.frames[self.index]
             self.index += 1
-            return True, frame
+            return True
+
+        def retrieve(self):
+            if self.current_frame is None:
+                return False, None
+            return True, self.current_frame
+
+        def read(self):
+            if not self.grab():
+                return False, None
+            return self.retrieve()
 
         def release(self) -> None:
             return None
