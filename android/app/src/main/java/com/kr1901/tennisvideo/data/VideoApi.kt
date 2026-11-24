@@ -135,7 +135,10 @@ class VideoApi(
         contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
                 val column = cursor.getColumnIndex(OpenableColumns.SIZE)
-                if (column >= 0 && !cursor.isNull(column)) return cursor.getLong(column)
+                if (column >= 0 && !cursor.isNull(column)) {
+                    val reportedSize = cursor.getLong(column)
+                    if (reportedSize > 0L) return reportedSize
+                }
             }
         }
         return contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
@@ -271,7 +274,7 @@ class VideoApi(
 
     fun startAnalysis(videoId: String, calibrationId: String?): JSONObject {
         val payload = JSONObject()
-            .put("sample_interval_seconds", 0.333)
+            .put("sample_interval_seconds", 0.5)
             .put("max_samples", 32000)
             .put("enable_ball_tracking", true)
         if (!calibrationId.isNullOrBlank()) {
@@ -394,9 +397,6 @@ class VideoApi(
             }
         return uri.lastPathSegment?.substringAfterLast('/') ?: "match.mp4"
     }
-
-    private fun safeFileName(name: String): String =
-        name.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "match.mp4" }
 
     private fun postJson(path: String, payload: JSONObject): JSONObject {
         val connection = openConnection(path, "POST")
