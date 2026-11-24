@@ -155,14 +155,14 @@ class DirectVideoDownloadWorker(
                             } else {
                                 -1
                             }
-                            setProgress(
-                                androidx.work.workDataOf(
-                                    KEY_BYTES_DONE to bytesWritten,
-                                    KEY_TOTAL_BYTES to totalLength,
-                                    KEY_PERCENT to percent
-                                )
-                            )
                             if (bytesWritten - lastNotificationBytes >= NOTIFICATION_UPDATE_BYTES) {
+                                setProgress(
+                                    androidx.work.workDataOf(
+                                        KEY_BYTES_DONE to bytesWritten,
+                                        KEY_TOTAL_BYTES to totalLength,
+                                        KEY_PERCENT to percent
+                                    )
+                                )
                                 setForeground(createForegroundInfo(bytesWritten, totalLength))
                                 lastNotificationBytes = bytesWritten
                             }
@@ -183,6 +183,14 @@ class DirectVideoDownloadWorker(
                     androidx.work.workDataOf(KEY_ERROR to "The video download was empty.")
                 )
             }
+            setProgress(
+                androidx.work.workDataOf(
+                    KEY_BYTES_DONE to partialFile.length(),
+                    KEY_TOTAL_BYTES to partialFile.length(),
+                    KEY_PERCENT to 100
+                )
+            )
+            setForeground(createForegroundInfo(partialFile.length(), partialFile.length()))
             if (!partialFile.renameTo(finalFile)) {
                 throw IOException("Could not finalise the downloaded video file.")
             }
