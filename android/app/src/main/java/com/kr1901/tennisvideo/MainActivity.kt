@@ -279,6 +279,13 @@ private fun LocalTennisVideoApp() {
     }
     val latestSample = sampleArray.optJSONObject(recentSampleCount - 1)
     val latestPlayers = latestSample?.optJSONArray("players") ?: JSONArray()
+    var hasCalibratedPlayers = false
+    for (index in 0 until latestPlayers.length()) {
+        if (latestPlayers.optJSONObject(index)?.has("court_x_m") == true) {
+            hasCalibratedPlayers = true
+            break
+        }
+    }
     val latestBall = latestSample?.optJSONObject("ball")
     var greenTotal = 0.0
     var motionTotal = 0.0
@@ -703,7 +710,7 @@ private fun LocalTennisVideoApp() {
                 }
             }
 
-            if (latestPlayers.any { index -> latestPlayers.optJSONObject(index)?.has("court_x_m") == true }) {
+            if (hasCalibratedPlayers) {
                 Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("4 · Live mini-court", fontWeight = FontWeight.Bold, color = AppInk)
