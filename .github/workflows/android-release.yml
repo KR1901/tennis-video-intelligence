@@ -112,6 +112,6 @@ jobs:
           APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           gh release create "$VERSION" "$APK" \
             --title "Tennis Video Intelligence $VERSION" \
-            --notes "Offline-first Android release. Includes local/direct-HTTPS video input, on-device MediaPipe pose and TrackNet V1 ball candidate inference, calibrated court projection, background analysis, per-candidate event review, review-backed player baseline/serve/shot/rally summaries, whole-match CSV/infographic export and model asset preparation from licensed upstream sources. Automatic tennis-event recognition remains a prototype and user review is required." \
+            --notes "Offline-first Android release. Includes local/direct-HTTPS video input, on-device MediaPipe pose and TrackNet V1 ball candidate inference, adjustable 2.5/5/10 fps sampling, calibrated court projection, background analysis, independent event-review labels, review-backed player baseline and return-position estimates, manually marked serve/shot placement bins, rally summaries, whole-match CSV/infographic export and model assets from licensed upstream sources. Automatic tennis-event recognition remains a prototype and user review is required." \
             --target "$GITHUB_SHA" \
             --latest
