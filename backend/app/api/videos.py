@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/videos", tags=["videos"])
     status_code=status.HTTP_201_CREATED,
     summary="Upload a tennis match video",
 )
-async def upload_video(file: UploadFile = File(...)) -> VideoUploadResponse:
+async def upload_video(file: Annotated[UploadFile, File()]) -> VideoUploadResponse:
     settings = get_settings()
     storage = LocalVideoStorage(
         root=Path(settings.storage_dir),
