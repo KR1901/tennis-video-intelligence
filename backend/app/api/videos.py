@@ -7,7 +7,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 import numpy as np
-from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import get_settings
@@ -19,6 +19,8 @@ from app.schemas.calibration import (
 )
 from app.schemas.video import (
     MediaInspectionResponse,
+    ResumableUploadCreateRequest,
+    ResumableUploadSessionResponse,
     VideoStatusResponse,
     VideoUploadResponse,
 )
@@ -44,6 +46,15 @@ from app.services.video_storage import (
     LocalVideoStorage,
     VideoTooLargeError,
     VideoValidationError,
+)
+from app.services.resumable_uploads import (
+    CHUNK_BYTES,
+    ResumableVideoStorage,
+    UploadBusy,
+    UploadNotFound,
+    UploadOffsetMismatch,
+    UploadTooLarge,
+    UploadValidationError,
 )
 
 router = APIRouter(prefix="/videos", tags=["videos"])
@@ -72,6 +83,141 @@ def _load_video_metadata(video_id: str) -> tuple[Path, Path, dict[str, object]]:
         raise HTTPException(status_code=404, detail="Video file not found.")
 
     return video_path, metadata_path, metadata
+
+
+
+
+def _resumable_storage() -> ResumableVideoStorage:
+    settings = get_settings()
+    return ResumableVideoStorage(
+        root=Path(settings.storage_dir),
+        max_upload_bytes=settings.max_upload_mb * 1024 * 1024,
+    )
+
+
+@router.post(
+    "/uploads",
+    response_model=ResumableUploadSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a resumable upload session (up to 10 GiB)",
+)
+async def create_resumable_upload(
+    request: ResumableUploadCreateRequest,
+) -> ResumableUploadSessionResponse:
+    try:
+        session = _resumable_storage().create(
+            request.filename,
+            request.content_type,
+            request.size_bytes,
+        )
+    except UploadTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ResumableUploadSessionResponse(
+        upload_id=str(session["upload_id"]),
+        upload_offset=int(session["upload_offset"]),
+        upload_length=int(session["size_bytes"]),
+        chunk_size_bytes=CHUNK_BYTES,
+    )
+
+
+@router.head("/uploads/{upload_id}", summary="Get the committed byte offset of an upload")
+async def get_resumable_upload_offset(upload_id: str) -> Response:
+    try:
+        session = _resumable_storage().get(upload_id)
+    except UploadNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT,
+        headers={
+            "Upload-Offset": str(session["upload_offset"]),
+            "Upload-Length": str(session["size_bytes"]),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.patch(
+    "/uploads/{upload_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Append one bounded, resumable upload chunk",
+)
+async def append_resumable_upload_chunk(
+    upload_id: str,
+    request: Request,
+    upload_offset: int = Header(ge=0, alias="Upload-Offset"),
+) -> Response:
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > CHUNK_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Each upload chunk must be at most {CHUNK_BYTES // (1024 * 1024)} MB.",
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length header.") from exc
+
+    try:
+        session = await _resumable_storage().append(upload_id, upload_offset, request.stream())
+    except UploadNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except UploadOffsetMismatch as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+            headers={"Upload-Offset": str(exc.expected_offset)},
+        ) from exc
+    except UploadBusy as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except UploadTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT,
+        headers={"Upload-Offset": str(session["upload_offset"]), "Cache-Control": "no-store"},
+    )
+
+
+@router.post(
+    "/uploads/{upload_id}/complete",
+    response_model=VideoUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Finalize a completed resumable video upload",
+)
+async def complete_resumable_upload(upload_id: str) -> VideoUploadResponse:
+    try:
+        metadata = _resumable_storage().complete(upload_id)
+    except UploadNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except UploadOffsetMismatch as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+            headers={"Upload-Offset": str(exc.expected_offset)},
+        ) from exc
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return VideoUploadResponse(
+        video_id=str(metadata["video_id"]),
+        filename=str(metadata["filename"]),
+        size_bytes=int(metadata["size_bytes"]),
+        content_type=str(metadata["content_type"]),
+        status="uploaded",
+        created_at=datetime.fromisoformat(str(metadata["created_at"])),
+    )
+
+
+@router.delete(
+    "/uploads/{upload_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Abort an incomplete resumable video upload",
+)
+async def abort_resumable_upload(upload_id: str) -> Response:
+    _resumable_storage().abort(upload_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
