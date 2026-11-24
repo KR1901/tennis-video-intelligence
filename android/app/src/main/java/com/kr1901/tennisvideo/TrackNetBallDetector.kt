@@ -48,11 +48,17 @@ internal class TrackNetBallDetector(context: Context) : AutoCloseable {
                 Bitmap.createScaledBitmap(source, INPUT_WIDTH, INPUT_HEIGHT, true)
             }
             scaled.getPixels(pixels, 0, INPUT_WIDTH, 0, 0, INPUT_WIDTH, INPUT_HEIGHT)
-            // The published TrackNet V1 checkpoint was trained from OpenCV BGR frame stacks.
-            pixels.forEach { pixel ->
-                inputBuffer.put(Color.blue(pixel) / 255f)
-                inputBuffer.put(Color.green(pixel) / 255f)
-                inputBuffer.put(Color.red(pixel) / 255f)
+            // The reference TrackNet input concatenates OpenCV BGR images along HWC
+            // and then converts to CHW. Write three complete channel planes per frame.
+            for (channel in 0 until 3) {
+                pixels.forEach { pixel ->
+                    val value = when (channel) {
+                        0 -> Color.blue(pixel)
+                        1 -> Color.green(pixel)
+                        else -> Color.red(pixel)
+                    }
+                    inputBuffer.put(value / 255f)
+                }
             }
             if (scaled !== source) scaled.recycle()
         }
