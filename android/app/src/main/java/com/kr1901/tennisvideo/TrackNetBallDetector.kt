@@ -87,11 +87,11 @@ internal class TrackNetBallDetector(context: Context) : AutoCloseable {
                         maxIndex = index
                     }
                 }
-                if (maxIndex < 0 || maxValue < MIN_HEATMAP_CLASS) return null
+                if (maxIndex < 0 || maxValue < MIN_BALL_PROBABILITY) return null
 
                 val peakX = maxIndex % INPUT_WIDTH
                 val peakY = maxIndex / INPUT_WIDTH
-                val minimum = max(MIN_HEATMAP_CLASS, maxValue - PEAK_WINDOW_DELTA)
+                val minimum = max(MIN_BALL_PROBABILITY, maxValue * PEAK_RELATIVE_THRESHOLD)
                 var totalWeight = 0.0
                 var weightedX = 0.0
                 var weightedY = 0.0
@@ -111,7 +111,7 @@ internal class TrackNetBallDetector(context: Context) : AutoCloseable {
                 return BallObservation(
                     x = (x / INPUT_WIDTH).toFloat().coerceIn(0f, 1f),
                     y = (y / INPUT_HEIGHT).toFloat().coerceIn(0f, 1f),
-                    confidence = (maxValue / 255f).coerceIn(0f, 1f)
+                    confidence = maxValue.coerceIn(0f, 1f)
                 )
             }
         } finally {
@@ -131,8 +131,8 @@ internal class TrackNetBallDetector(context: Context) : AutoCloseable {
         private const val INPUT_FLOATS = 9 * INPUT_WIDTH * INPUT_HEIGHT
         private const val OUTPUT_PIXELS = INPUT_WIDTH * INPUT_HEIGHT
         private const val INFERENCE_THREADS = 2
-        private const val MIN_HEATMAP_CLASS = 150f
-        private const val PEAK_WINDOW_DELTA = 24f
+        private const val MIN_BALL_PROBABILITY = 0.12f
+        private const val PEAK_RELATIVE_THRESHOLD = 0.60f
         private const val PEAK_RADIUS = 9
 
         private fun copyModelAsset(context: Context, assetPath: String, fileName: String): File {
