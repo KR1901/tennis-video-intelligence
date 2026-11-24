@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -44,10 +45,16 @@ class LocalAnalysisWorker(
         try {
             retriever.setDataSource(applicationContext, Uri.parse(contentUri))
             while (timeMs < nextStartMs && !isStopped) {
-                val source = retriever.getFrameAtTime(
-                    timeMs * 1000L,
-                    MediaMetadataRetriever.OPTION_CLOSEST
-                )
+                val source = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    retriever.getScaledFrameAtTime(
+                        timeMs * 1000L,
+                        MediaMetadataRetriever.OPTION_CLOSEST,
+                        FRAME_WIDTH,
+                        FRAME_HEIGHT
+                    )
+                } else {
+                    retriever.getFrameAtTime(timeMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST)
+                }
                 if (source != null) {
                     val scaled = Bitmap.createScaledBitmap(source, FRAME_WIDTH, FRAME_HEIGHT, true)
                     if (scaled !== source) source.recycle()
