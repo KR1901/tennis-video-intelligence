@@ -48,7 +48,8 @@ def render_analysis_png(job: dict[str, Any]) -> bytes:
     _text(canvas, "Court positioning and reviewed-event report", 60, 116, 0.65)
     _text(
         canvas,
-        f"Video: {job.get('video_id', 'unknown')}  |  Analysis: {job.get('analysis_id', 'unknown')}",
+        f"Video: {job.get('video_id', 'unknown')}  |  "
+        f"Analysis: {job.get('analysis_id', 'unknown')}",
         60,
         152,
         0.48,
@@ -162,7 +163,11 @@ def render_analysis_png(job: dict[str, Any]) -> bytes:
         (
             "Serve attempts / in-rate",
             f"{serve['recorded_attempts']} / "
-            f"{serve['serve_in_percentage'] if serve['serve_in_percentage'] is not None else 'N/A'}",
+            (
+                f"{serve['serve_in_percentage']}"
+                if serve["serve_in_percentage"] is not None
+                else "N/A"
+            ),
         ),
         (
             "First / second serves",
@@ -216,7 +221,8 @@ def render_analysis_png(job: dict[str, Any]) -> bytes:
     )
     _text(
         canvas,
-        "Positive baseline distance = behind baseline; negative = inside court. Distances are metres.",
+        "Positive baseline distance = behind baseline; negative = inside court. "
+        "Distances are metres.",
         60,
         footer_y + 90,
         0.43,
