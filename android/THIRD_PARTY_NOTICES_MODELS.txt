@@ -33,9 +33,12 @@ Third-party model notices for Android
 
 2) MediaPipe Pose Landmarker Lite
    Model: pose_landmarker_lite.task
-   Source: https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker
-   Download: Google's official MediaPipe model bucket.
-   MediaPipe Tasks and its official sample code are Apache License 2.0.
+   Model documentation: https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker
+   Model asset mirror: https://huggingface.co/litert-community/MediaPipe-PoseLandmarker-Lite
+   The build pins SHA-256 59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a
+   and verifies the task asset before packaging. The asset corresponds to the
+   official MediaPipe Pose Landmarker Lite model used by Google's sample app.
+   MediaPipe Tasks, official sample code and the pose model are Apache License 2.0.
    The app uses the task to estimate up to two visible human body poses. It does
    not identify the people by name or establish a verified player identity.
    See https://github.com/google-ai-edge/mediapipe/blob/master/LICENSE.
