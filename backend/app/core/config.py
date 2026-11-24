@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     storage_dir: Path = Path("./data/videos")
-    max_upload_mb: int = Field(default=4_768, ge=1, le=4_768)
+    max_upload_mb: int = Field(default=10_240, ge=1, le=10_240)
     allowed_origins: str = "http://localhost:8080"
     api_token: str = ""
 
