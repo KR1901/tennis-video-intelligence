@@ -47,7 +47,7 @@ Install FFmpeg so both `ffmpeg` and `ffprobe` are available on the backend PATH.
 
 ## Current app flow
 
-1. Choose a local video through Android's document picker. Uploads use a 16 MiB resumable chunk protocol, byte-offset acknowledgements, bounded retries and progress reporting. Android 14+ runs the transfer as a user-initiated data-transfer job; older Android versions use a persistent WorkManager foreground worker. The selected document permission and upload session are persisted so the transfer can continue after the app is closed, and retries resume from the last committed byte. The configured total file-size ceiling is 10 GiB.
+1. Choose a local video through Android's document picker. Uploads use a 16 MiB resumable chunk protocol, byte-offset acknowledgements, bounded retries and progress reporting. Android 14+ runs the transfer as a user-initiated data-transfer job; older Android versions use a persistent WorkManager foreground worker. The selected document permission and upload session are persisted so the transfer can continue after the app is closed, and retries resume from the last committed byte. The configured total file-size ceiling is 5 GB.
 2. Inspect duration, resolution, frame rate and codec through ffprobe; optionally enter the shared API bearer token when the backend is configured to require it.
 3. Extract a JPEG frame at a chosen timestamp.
 4. Request a heuristic green-region court-corner suggestion or tap the four corners manually in the order far-left, far-right, near-right, near-left. The app overlays the selected points so they can be checked before saving.
