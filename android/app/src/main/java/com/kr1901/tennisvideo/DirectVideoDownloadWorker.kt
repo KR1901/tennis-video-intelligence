@@ -25,14 +25,8 @@ class DirectVideoDownloadWorker(
         val suppliedUrl = inputData.getString(KEY_URL)?.trim().orEmpty()
         if (suppliedUrl.isBlank()) return Result.failure()
 
-        var targetUri = runCatching { URI(suppliedUrl) }.getOrNull()
+        var targetUri = DirectVideoImportPolicy.parseAllowedHttpsUrl(suppliedUrl)
             ?: return Result.failure()
-        if (!targetUri.scheme.equals("https", ignoreCase = true) ||
-            targetUri.host.isNullOrBlank() ||
-            targetUri.userInfo != null
-        ) {
-            return Result.failure()
-        }
 
         val videoDirectory = File(applicationContext.filesDir, "remote_videos").apply { mkdirs() }
         val stableName = stableName(suppliedUrl)
@@ -96,15 +90,7 @@ class DirectVideoDownloadWorker(
                     )
                 }
 
-                val contentType = activeConnection.contentType
-                    ?.substringBefore(';')
-                    ?.trim()
-                    ?.lowercase(Locale.US)
-                    .orEmpty()
-                val supportedType = contentType.startsWith("video/") ||
-                    contentType == "application/octet-stream" ||
-                    contentType == "binary/octet-stream"
-                if (!supportedType) {
+                if (!DirectVideoImportPolicy.isDirectVideoContentType(activeConnection.contentType)) {
                     partialFile.delete()
                     return Result.failure(
                         androidx.work.workDataOf(KEY_ERROR to "The URL did not return a direct video file.")
