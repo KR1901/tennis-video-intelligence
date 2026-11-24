@@ -2,7 +2,7 @@
 
 AI-assisted tennis match analysis from video. The long-term goal is to turn a match recording into video-linked, court-calibrated visual analytics: player positioning, serve and return patterns, shot placement, rally structure, movement heatmaps and tactical reports.
 
-> **Project status: foundation / MVP scaffolding.** This repository currently contains a working video-ingestion API and project documentation. It does **not** yet detect players or balls, classify tennis events, or calculate match statistics. Those capabilities will be added behind explicit, testable analysis stages.
+> **Project status: interactive prototype.** The repository now contains a FastAPI video-ingestion and media-inspection API, manual court calibration / coordinate projection, and an Android Jetpack Compose client for the upload-to-measurement workflow. It does **not** yet detect players or balls automatically, classify tennis events, or calculate match statistics.
 
 ## Product direction
 
@@ -27,11 +27,11 @@ The first useful end-to-end milestone is deliberately narrow:
 
 - Upload a match video.
 - Probe and inspect the video.
-- Detect and calibrate the court on a stable camera segment.
-- Track both players.
-- Project player foot positions onto a real-world court map.
-- Report player position in metres relative to the baseline, with confidence and video timestamps.
-- Replay the source frames behind each reported measurement.
+- Manually calibrate the court on a stable frame by selecting its four outer corners.
+- Manually select a player's foot / ground-contact point and convert it to metres relative to the chosen baseline.
+- Keep the selected frame timestamp and coordinate provenance.
+
+The next milestone is automatic court-keypoint detection and player tracking, with quality scoring and review. The interactive prototype's manual measurement is a calibration proof of concept, not a match-level average-position report.
 
 Ball tracking and shot/event recognition follow after player tracking and court calibration can be measured reliably.
 
@@ -39,7 +39,7 @@ Ball tracking and shot/event recognition follow after player tracking and court 
 
 ```text
 backend/       FastAPI ingestion API and analysis service boundaries
-android/       Android client direction and API integration notes
+android/       Kotlin + Jetpack Compose client prototype
 docs/          Architecture, metric definitions, reliability and delivery roadmap
 .github/       CI workflow and issue templates
 ```
@@ -74,6 +74,10 @@ curl -X POST "http://127.0.0.1:8000/api/v1/videos" \\
 ```
 
 The API checks the filename extension, declared content type and configured size cap, stores the file in the configured local storage directory and returns a video ID. Then call `POST /api/v1/videos/{video_id}/inspect` to use FFmpeg/ffprobe to inspect the media container and record available duration, resolution, frame rate, codec, rotation and file-size metadata. `GET /api/v1/videos/{video_id}` returns the stored status and inspection result. `GET /api/v1/videos/{video_id}/frame?timestamp_seconds=12.5` extracts a JPEG preview. Submit the four outer court corners (far-left, far-right, near-right, near-left) to `POST /api/v1/videos/{video_id}/calibrations`; then use the returned calibration ID with the `/project` endpoint to convert a selected image point into court-plane metres. This is media inspection, not tennis analysis: player/ball tracking and match statistics have not yet been implemented. The current storage adapter is for local development; production storage, database persistence, background jobs and access controls are planned separately.
+
+## Android prototype
+
+See [the Android setup and usage guide](android/README.md). It includes the current local upload, frame preview and manual calibration workflow. The debug Android build is checked by the Android CI workflow.
 
 ## Configuration
 
