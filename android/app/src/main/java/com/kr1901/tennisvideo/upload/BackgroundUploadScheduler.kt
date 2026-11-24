@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PersistableBundle
 import android.provider.OpenableColumns
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -15,7 +16,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import java.io.IOException
-import java.util.concurrent.TimeUnit
+import java.time.Duration
 
 object BackgroundUploadScheduler {
     const val UNIQUE_WORK_NAME = "tennis-video-upload"
@@ -110,7 +111,7 @@ object BackgroundUploadScheduler {
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build()
             )
-            .setBackoffCriteria(30_000L, TimeUnit.MILLISECONDS)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(30))
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(
