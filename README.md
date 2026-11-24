@@ -71,11 +71,11 @@ curl -X POST "http://127.0.0.1:8000/api/v1/videos" \\
   -F "file=@/path/to/your-match.mp4"
 ```
 
-The API validates uploads, inspects media with ffprobe, extracts timestamped frames, stores manual court calibrations, suggests green-region court corners for human confirmation, and starts a local background CV analysis job. Use `POST /api/v1/videos/{video_id}/analyses` to start the job, `GET /api/v1/analyses/{analysis_id}` for status and positioning, `GET /api/v1/analyses/{analysis_id}/events` to review candidates, and the `/events` POST routes to accept/reject/relabel or add human-confirmed events. `GET /api/v1/analyses/{analysis_id}/report.svg` exports an SVG. These endpoints are documented at `/docs`. The current storage adapter uses local files and in-process background tasks; authentication, durable database/queue, multi-user isolation and private object storage are not yet implemented.
+The API validates uploads, supports resumable 16 MiB chunks up to 10 GiB per file, inspects media with ffprobe, extracts timestamped frames, stores manual court calibrations, suggests green-region court corners for human confirmation, and starts a local background CV analysis job. Use `POST /api/v1/videos/{video_id}/analyses` to start the job, `GET /api/v1/analyses/{analysis_id}` for status and positioning, `GET /api/v1/analyses/{analysis_id}/events` to review candidates, and the `/events` POST routes to accept/reject/relabel or add human-confirmed events. `GET /api/v1/analyses/{analysis_id}/report.svg` exports an SVG. These endpoints are documented at `/docs`. The local storage adapter uses a persistent disk directory and in-process background tasks; a durable queue, multi-user isolation, shared object storage, per-user quotas and production-scale worker orchestration are not yet implemented.
 
 ## Android prototype
 
-See [the Android setup and usage guide](android/README.md). The app includes upload/inspection, court-corner suggestions, visible calibration taps, baseline projection, sampled candidate analysis, position heatmaps, manual event metadata, native seekable video playback, video deletion, and SVG/PNG/PDF report export. Debug and release builds are checked by GitHub Actions.
+See [the Android setup and usage guide](android/README.md). The app includes resumable 10 GiB video uploads, progress and retry handling, HTTPS-only production networking, Liquid Glass-inspired Android surfaces, court calibration, sampled candidate analysis, event review, playback, and SVG/PNG/PDF reports. Debug and release builds are checked by GitHub Actions.
 
 ## Release signing
 
@@ -89,7 +89,7 @@ Environment variables use the `TVI_` prefix:
 |---|---|---|
 | `TVI_ENVIRONMENT` | `development` | Runtime environment |
 | `TVI_STORAGE_DIR` | `./data/videos` | Local uploaded-video directory |
-| `TVI_MAX_UPLOAD_MB` | `2048` | Maximum upload size |
+| `TVI_MAX_UPLOAD_MB` | `10240` | Maximum upload size in MiB (10 GiB per file) |
 | `TVI_ALLOWED_ORIGINS` | `http://localhost:8080` | CORS origins, comma-separated |
 | `TVI_API_TOKEN` | empty | Optional shared bearer token; required when `TVI_ENVIRONMENT=production` |
 
