@@ -10,10 +10,11 @@
 
 ## Milestone 1 — media inspection and job lifecycle
 
-- [ ] Probe metadata with FFmpeg / ffprobe (duration, codec, fps, resolution, rotation).
+- [x] Probe media metadata with FFmpeg / ffprobe.
+- [x] Persist inspection output alongside the local video metadata.
 - [ ] Persist video and job metadata in PostgreSQL.
 - [ ] Add background job queue and retry-safe job states.
-- [ ] Add authenticated video status endpoints and private object storage.
+- [ ] Add authentication, private object storage and retention controls.
 - [ ] Generate low-resolution proxy video and representative frames.
 
 ## Milestone 2 — court and player positioning
