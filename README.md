@@ -2,7 +2,7 @@
 
 AI-assisted tennis match analysis from video. The long-term goal is to turn a match recording into video-linked, court-calibrated visual analytics: player positioning, serve and return patterns, shot placement, rally structure, movement heatmaps and tactical reports.
 
-> **Project status: research / working prototype.** The repository contains a FastAPI video-ingestion and analysis API, an Android Jetpack Compose client, manual court calibration, heuristic court suggestions, generic person/ball candidate detection, position heatmaps, manual event review and SVG report export. The current CV detectors are not trained or validated for tennis and must not be treated as official match statistics without human review.
+> **Project status: offline Android foundation in progress.** The Android app is being redesigned to read videos and process them locally without a hosted backend. The current offline pass is a coarse frame sampler, not a validated tennis player/ball tracking system. The previous FastAPI/OpenCV prototype remains in the repository for research and comparison.
 
 ## Product direction
 
