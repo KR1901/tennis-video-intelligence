@@ -25,7 +25,7 @@ class VideoApi(
 ) {
     private val baseUrl = baseUrl.trim().trimEnd('/')
 
-    private companion object {
+    companion object {
         const val UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024
         const val MAX_CHUNK_RETRIES = 3
         const val MAX_UPLOAD_BYTES = 4_768L * 1024L * 1024L
