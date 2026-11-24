@@ -85,7 +85,7 @@ jobs:
         if: steps.signing.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: tennis-video-intelligence-v0.5.0-release-signed
+          name: tennis-video-intelligence-v0.6.0-release-signed
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
@@ -94,7 +94,7 @@ jobs:
         if: steps.signing.outputs.configured != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: tennis-video-intelligence-v0.5.0-release-unsigned
+          name: tennis-video-intelligence-v0.6.0-release-unsigned
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
@@ -103,7 +103,7 @@ jobs:
         if: steps.signing.outputs.configured == 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: v0.5.0
+          VERSION: v0.6.0
         run: |
           if gh release view "$VERSION" >/dev/null 2>&1; then
             echo "Release $VERSION already exists; leaving the published release unchanged."
@@ -112,6 +112,6 @@ jobs:
           APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           gh release create "$VERSION" "$APK" \
             --title "Tennis Video Intelligence $VERSION" \
-            --notes "Offline-first Android release. Includes on-device two-player pose detection, TrackNet V1 tennis-ball candidate tracking, court-calibrated positioning, background analysis, player/ball timeline and reviewed event candidates. Model assets are prepared from their licensed upstream sources during the release build. Automated event labels and tactical metrics remain confidence-gated and require review." \
+            --notes "Offline-first Android release. Includes local/direct-HTTPS video input, on-device MediaPipe pose and TrackNet V1 ball candidate inference, adjustable 2.5/5/10 fps sampling, calibrated court projection, background analysis, independent event-review labels, review-backed player baseline and return-position estimates, manually marked serve/shot placement bins, rally summaries, whole-match CSV/infographic export and model assets from licensed upstream sources. Automatic tennis-event recognition remains a prototype and user review is required." \
             --target "$GITHUB_SHA" \
             --latest

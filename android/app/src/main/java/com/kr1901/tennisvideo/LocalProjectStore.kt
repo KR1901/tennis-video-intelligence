@@ -5,6 +5,7 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Locale
 import java.util.UUID
 
 internal data class LocalVideoMetadata(
@@ -202,6 +203,25 @@ internal object LocalProjectStore {
             }
             project.put("manual_positions", manualPositions)
         }
+        val events = project.optJSONArray("events") ?: JSONArray()
+        for (index in 0 until events.length()) {
+            val event = events.optJSONObject(index) ?: continue
+            val imageX = event.optDouble("image_x", event.optDouble("ball_x", Double.NaN))
+            val imageY = event.optDouble("image_y", event.optDouble("ball_y", Double.NaN))
+            when {
+                points.isEmpty() -> applyMeasurement(event, null)
+                validCorners != null && imageX.isFinite() && imageY.isFinite() -> {
+                    applyMeasurement(
+                        event,
+                        CourtProjector.project(validCorners, imageX.toFloat(), imageY.toFloat())
+                    )
+                }
+                // Preserve legacy/manual event coordinates when no raw image point
+                // was stored, because they cannot be safely recalculated.
+            }
+        }
+        project.put("events", events)
+
         if (validCorners != null || points.isEmpty()) {
             val log = sampleLogFile(context, id)
             if (log.isFile) {
@@ -347,6 +367,15 @@ internal object LocalProjectStore {
     fun appendEventCandidates(context: Context, id: String, additions: List<JSONObject>) {
         update(context, id) { project ->
             val events = project.optJSONArray("events") ?: JSONArray()
+            val cornersJson = project.optJSONArray("court_corners") ?: JSONArray()
+            val corners = if (cornersJson.length() == 4) {
+                (0 until 4).mapNotNull { index ->
+                    val point = cornersJson.optJSONObject(index) ?: return@mapNotNull null
+                    point.optDouble("x").toFloat() to point.optDouble("y").toFloat()
+                }.takeIf { it.size == 4 }
+            } else {
+                null
+            }
             val knownIds = HashSet<String>()
             for (index in 0 until events.length()) {
                 knownIds.add(events.optJSONObject(index)?.optString("event_id") ?: "")
@@ -354,6 +383,16 @@ internal object LocalProjectStore {
             additions.forEach { event ->
                 val eventId = event.optString("event_id")
                 if (eventId.isNotBlank() && eventId !in knownIds) {
+                    if (corners != null) {
+                        val imageX = event.optDouble("image_x", event.optDouble("ball_x", Double.NaN))
+                        val imageY = event.optDouble("image_y", event.optDouble("ball_y", Double.NaN))
+                        if (imageX.isFinite() && imageY.isFinite()) {
+                            applyMeasurement(
+                                event,
+                                CourtProjector.project(corners, imageX.toFloat(), imageY.toFloat())
+                            )
+                        }
+                    }
                     events.put(event)
                     knownIds.add(eventId)
                 }
@@ -398,7 +437,9 @@ internal object LocalProjectStore {
         timestampMs: Long,
         eventType: String,
         note: String,
-        measurement: CourtPositionMeasurement? = null
+        measurement: CourtPositionMeasurement? = null,
+        imageX: Float? = null,
+        imageY: Float? = null
     ) {
         update(context, id) { project ->
             val events = project.optJSONArray("events") ?: JSONArray()
@@ -412,6 +453,10 @@ internal object LocalProjectStore {
                     .put("review_status", "accepted")
                     .put("note", note)
                     .apply {
+                        if (imageX != null && imageY != null) {
+                            put("image_x", imageX)
+                            put("image_y", imageY)
+                        }
                         if (measurement != null) {
                             put("court_x_m", measurement.xMeters)
                             put("court_y_m", measurement.yMeters)
@@ -422,6 +467,127 @@ internal object LocalProjectStore {
             )
             project.put("events", events)
         }
+    }
+
+    /**
+     * Computes review-backed metrics from the complete NDJSON timeline, not just
+     * the 600-row recent window kept in the project JSON for fast UI refreshes.
+     */
+    @Synchronized
+    fun calculateAnalytics(context: Context, id: String): TennisMatchAnalytics? {
+        val project = load(context, id) ?: return null
+        val events = project.optJSONArray("events") ?: JSONArray()
+        val log = sampleLogFile(context, id)
+        if (log.isFile) {
+            return log.useLines { lines ->
+                TennisMatchAnalyticsCalculator.calculate(
+                    lines.mapNotNull { line -> runCatching { JSONObject(line) }.getOrNull() },
+                    events
+                )
+            }
+        }
+        val samples = project.optJSONArray("samples") ?: JSONArray()
+        return TennisMatchAnalyticsCalculator.calculate(
+            (0 until samples.length()).asSequence().mapNotNull { samples.optJSONObject(it) },
+            events
+        )
+    }
+
+    /**
+     * Builds a bounded, whole-match report snapshot by evenly sampling the
+     * persistent NDJSON log. The full source log is never loaded into memory.
+     */
+    @Synchronized
+    fun loadReportSnapshot(
+        context: Context,
+        id: String,
+        maxSamples: Int = 1_800
+    ): JSONObject? {
+        val project = load(context, id) ?: return null
+        val reportProject = JSONObject(project.toString())
+        calculateAnalytics(context, id)?.let { analytics ->
+            reportProject.put("match_analytics", analyticsToJson(analytics))
+        }
+        val log = sampleLogFile(context, id)
+        if (!log.isFile || maxSamples <= 0) return reportProject
+
+        val expectedCount = project.optInt("sample_count", 0).coerceAtLeast(0)
+        if (expectedCount <= maxSamples) {
+            val complete = JSONArray()
+            log.forEachLine { line ->
+                runCatching { JSONObject(line) }.getOrNull()?.let(complete::put)
+            }
+            return reportProject.put("samples", complete)
+        }
+
+        val stride = kotlin.math.ceil(expectedCount.toDouble() / maxSamples.toDouble())
+            .toInt().coerceAtLeast(1)
+        val selected = JSONArray()
+        var index = 0
+        var lastSample: JSONObject? = null
+        log.forEachLine { line ->
+            val sample = runCatching { JSONObject(line) }.getOrNull()
+            if (sample != null) {
+                lastSample = sample
+                if (index % stride == 0 && selected.length() < maxSamples) {
+                    selected.put(sample)
+                }
+                index++
+            }
+        }
+        if (lastSample != null) {
+            val lastTime = lastSample!!.optLong("timestamp_ms")
+            val alreadyLast = selected.length() > 0 &&
+                selected.optJSONObject(selected.length() - 1)?.optLong("timestamp_ms") == lastTime
+            if (!alreadyLast) selected.put(lastSample)
+        }
+        return reportProject
+            .put("samples", selected)
+            .put("report_sample_count", index)
+    }
+
+    private fun analyticsToJson(analytics: TennisMatchAnalytics): JSONObject {
+        fun countMap(counts: Map<String, Int>): JSONObject =
+            JSONObject().apply { counts.forEach { (key, value) -> put(key, value) } }
+
+        val players = JSONArray()
+        analytics.players.forEach { player ->
+            players.put(
+                JSONObject()
+                    .put("player_id", player.playerId)
+                    .put("observations", player.observations)
+                    .put("behind_baseline_pct", player.behindBaselinePercent)
+                    .put("mean_signed_baseline_m", player.averageSignedBaselineDistanceMeters)
+                    .put("sampled_movement_m", player.sampledMovementMeters)
+            )
+        }
+        val returnPositions = JSONArray()
+        analytics.returnPositions.forEach { position ->
+            returnPositions.put(
+                JSONObject()
+                    .put("player_id", position.playerId)
+                    .put("serve_zone", position.serveZone)
+                    .put("observations", position.observations)
+                    .put("mean_signed_baseline_m", position.averageSignedBaselineDistanceMeters)
+                    .put("behind_baseline_pct", position.behindBaselinePercent)
+            )
+        }
+        return JSONObject()
+            .put("players", players)
+            .put("return_positions", returnPositions)
+            .put("serve_zones", countMap(analytics.serveZones.counts))
+            .put("serve_zone_total", analytics.serveZones.total)
+            .put("shot_depths", countMap(analytics.shotDepths.counts))
+            .put("shot_depth_total", analytics.shotDepths.total)
+            .put("shot_directions", countMap(analytics.shotDirections.counts))
+            .put("shot_direction_total", analytics.shotDirections.total)
+            .put("rallies_completed", analytics.rallies.completedRallies)
+            .put("rally_avg_duration_s", analytics.rallies.averageDurationSeconds)
+            .put("rally_avg_reviewed_strokes", analytics.rallies.averageReviewedStrokes)
+            .put("accepted_events", analytics.acceptedEvents)
+            .put("accepted_located_events", analytics.acceptedLocatedEvents)
+            .put("pending_candidates", analytics.pendingCandidates)
+            .put("calibrated_player_observations", analytics.calibratedPlayerObservations)
     }
 
     @Synchronized
@@ -453,19 +619,89 @@ internal object LocalProjectStore {
     @Synchronized
     fun exportEventsCsv(context: Context, id: String): String {
         val events = load(context, id)?.optJSONArray("events") ?: error("Project was not found")
-        val csv = StringBuilder("timestamp_ms,event_type,confidence,review_status,source,note\n")
+        val csv = StringBuilder(
+            "timestamp_ms,event_type,confidence,review_status,source,player_end,court_x_m,court_y_m,signed_baseline_distance_m,image_x,image_y,note\n"
+        )
+        fun field(value: String): String =
+            "\"" + value.replace("\"", "\"\"") + "\""
         for (index in 0 until events.length()) {
             val event = events.optJSONObject(index) ?: continue
             csv.append(event.optLong("timestamp_ms")).append(',')
-                .append(event.optString("event_type")).append(',')
+                .append(field(event.optString("event_type"))).append(',')
                 .append(event.optDouble("confidence")).append(',')
-                .append(event.optString("review_status")).append(',')
-                .append(event.optString("source")).append(',')
-                .append('"').append(event.optString("note").replace("\"", "\"\"")).append('"')
+                .append(field(event.optString("review_status"))).append(',')
+                .append(field(event.optString("source"))).append(',')
+                .append(field(event.optString("player_end"))).append(',')
+                .append(if (event.has("court_x_m")) event.optDouble("court_x_m") else "").append(',')
+                .append(if (event.has("court_y_m")) event.optDouble("court_y_m") else "").append(',')
+                .append(if (event.has("baseline_distance_m")) event.optDouble("baseline_distance_m") else "").append(',')
+                .append(if (event.has("image_x")) event.optDouble("image_x") else "").append(',')
+                .append(if (event.has("image_y")) event.optDouble("image_y") else "").append(',')
+                .append(field(event.optString("note")))
                 .append('\n')
         }
         return csv.toString()
     }
+
+    @Synchronized
+    fun exportMetricsCsv(context: Context, id: String): String {
+        val analytics = calculateAnalytics(context, id) ?: error("Project was not found")
+        val csv = StringBuilder("category,metric,value,unit,observations,definition\n")
+        fun row(category: String, metric: String, value: String, unit: String, observations: Int, definition: String) {
+            csv.append(csvField(category)).append(',')
+                .append(csvField(metric)).append(',')
+                .append(csvField(value)).append(',')
+                .append(csvField(unit)).append(',')
+                .append(observations).append(',')
+                .append(csvField(definition)).append('\n')
+        }
+        analytics.players.forEach { player ->
+            row("Player position", player.playerId + " behind baseline", "%.1f".format(Locale.US, player.behindBaselinePercent), "%", player.observations,
+                "Percent of calibrated pose observations whose signed baseline distance is zero or positive.")
+            row("Player position", player.playerId + " mean signed baseline distance", "%.3f".format(Locale.US, player.averageSignedBaselineDistanceMeters), "m", player.observations,
+                "Positive means behind the baseline; negative means inside the court.")
+            row("Player movement", player.playerId + " sampled path length", "%.2f".format(Locale.US, player.sampledMovementMeters), "m", player.observations,
+                "Sum of consecutive sampled foot-point displacements, excluding long time gaps and implausibly large jumps.")
+        }
+        analytics.serveZones.counts.forEach { (zone, count) ->
+            row("Serve placement", zone, count.toString(), "accepted events", analytics.serveZones.total,
+                "Manually reviewed serve locations binned by their calibrated court x position; outside-box points are reported separately.")
+        }
+        analytics.returnPositions.forEach { position ->
+            row(
+                "Return position",
+                position.playerId + " after " + position.serveZone + " serve",
+                String.format(Locale.US, "%+.3f", position.averageSignedBaselineDistanceMeters),
+                "m signed baseline distance",
+                position.observations,
+                "Closest calibrated pose on the serve target half within 1.2 seconds of an accepted located serve marker. P1/P2 labels are temporary and may swap."
+            )
+        }
+        analytics.shotDepths.counts.forEach { (depth, count) ->
+            row("Shot placement", depth, count.toString(), "accepted events", analytics.shotDepths.total,
+                "Manually reviewed shot/contact locations binned by distance from the net.")
+        }
+        analytics.shotDirections.counts.forEach { (direction, count) ->
+            row("Shot placement", direction, count.toString(), "accepted events", analytics.shotDirections.total,
+                "Left/centre/right is relative to the calibrated court x-axis, not the player's facing direction.")
+        }
+        row("Rally review", "Completed point start/end pairs", analytics.rallies.completedRallies.toString(), "rallies", analytics.rallies.completedRallies,
+            "Counts only accepted manual point_start and point_end markers.")
+        row("Rally review", "Average rally duration", "%.2f".format(Locale.US, analytics.rallies.averageDurationSeconds), "seconds", analytics.rallies.completedRallies,
+            "Mean time between accepted point_start and point_end markers.")
+        row("Rally review", "Average labelled strokes", "%.2f".format(Locale.US, analytics.rallies.averageReviewedStrokes), "strokes", analytics.rallies.ralliesWithStrokeLabels,
+            "Mean manually accepted serve/return/forehand/backhand/volley/shot/contact labels between point boundaries.")
+        row("Review coverage", "Accepted event labels", analytics.acceptedEvents.toString(), "events", analytics.acceptedEvents,
+            "Accepted manual or reviewed candidates; unreviewed candidates are excluded from placement counts.")
+        row("Review coverage", "Accepted located event labels", analytics.acceptedLocatedEvents.toString(), "events", analytics.acceptedEvents,
+            "Accepted event labels that have valid court x/y coordinates.")
+        row("Review coverage", "Awaiting review", analytics.pendingCandidates.toString(), "events", analytics.pendingCandidates,
+            "Model-generated candidates that have not been accepted or rejected.")
+        return csv.toString()
+    }
+
+    private fun csvField(value: String): String =
+        "\"" + value.replace("\"", "\"\"") + "\""
 
     @Synchronized
     fun exportPositionsCsv(context: Context, id: String): String {

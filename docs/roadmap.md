@@ -16,6 +16,7 @@ Checked items mean that code paths exist in the current offline Android branch. 
 - [x] Add direct HTTPS video-file import with redirect validation, connected-network WorkManager, partial Range resume and streaming size enforcement.
 - [x] Preview decoded frames at selected timestamps.
 - [x] Run bounded, persistent WorkManager analysis chunks and record progress.
+- [x] Let users choose quick 2.5 fps, balanced 5 fps or detailed 10 fps sampling and persist that choice across worker continuations.
 - [x] Persist the full sample stream incrementally in NDJSON and retain a bounded recent UI window.
 - [x] Export the complete sample timeline as CSV.
 - [ ] Add instrumentation tests for SAF provider variations, HTTP Range resume, process death, reboot and interrupted-download cases.
@@ -40,7 +41,8 @@ Checked items mean that code paths exist in the current offline Android branch. 
 - [x] Sample TrackNet every 200 ms (5 fps) using three consecutive decoded frames and store candidate ball points.
 - [x] Project ball points into court coordinates when the user calibration is valid.
 - [x] Generate confidence-gated possible direction-change/contact/bounce candidates.
-- [x] Review, accept, reject and relabel event candidates.
+- [x] Review, accept, reject and relabel event candidates with separate per-candidate label drafts.
+- [x] Reproject candidate/manual event locations after court recalibration when source image coordinates are available.
 - [x] Add manual timestamped event entry and manually tapped serve/shot location in court metres.
 - [ ] Implement validated long-gap ball tracking, occlusion recovery and camera-segment handling.
 - [ ] Train/validate serve, bounce, racket-contact and point-boundary classifiers.
@@ -51,9 +53,14 @@ Checked items mean that code paths exist in the current offline Android branch. 
 
 - [x] Mini-court with recent P1/P2 movement trails, density dots and ball candidate locations.
 - [x] Court infographic export as SVG, PNG and PDF.
-- [x] Export candidate/reviewed event records and calibrated manual positions as CSV.
-- [ ] Produce validated serve placement (T/body/wide) and return position by serve type.
-- [ ] Produce validated shot landing/depth maps and rally-length statistics.
+- [x] Export candidate/reviewed event records and calibrated manual positions as CSV, including event court coordinates and image points where available.
+- [x] Calculate review-backed P1/P2 baseline summaries and sampled path lengths from the full on-device sample log.
+- [x] Estimate returner baseline position by serve zone from the nearest receiving-half pose within 1.2 seconds of an accepted, court-located serve marker.
+- [x] Bin accepted, manually located serve labels into T/body/wide/outside-service-box and shot labels into short/mid-court/deep and left/centre/right.
+- [x] Calculate rally duration/stroke summaries only from accepted point_start/point_end and accepted stroke labels.
+- [x] Export review-backed match metrics as CSV and create whole-match report snapshots by streaming/decimating the full sample log.
+- [ ] Train/validate automatic serve-placement and return-position recognition by serve type. The current T/body/wide bins are descriptive counts from manually accepted event locations; returner positions are nearby sampled pose estimates, not ground-truth stances.
+- [ ] Train/validate automatic shot landing/depth recognition and point/rally construction. The current shot bins and rally-length summaries require user-entered/accepted event markers.
 - [ ] Derive winners, forced/unforced errors, serve +1 and return +1 only from verified event sequences.
 - [ ] Add player comparison filters, set/point selection, time-linked replay and performance summaries.
 - [ ] Benchmark all automated metrics against human-annotated held-out matches before presenting them as reliable.

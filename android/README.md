@@ -57,7 +57,7 @@ These measurements depend on correctly paired corners and a stable camera view. 
 
 ## On-device analysis
 
-The WorkManager pipeline processes bounded five-second chunks at a five-frames-per-second sampling grid:
+The WorkManager pipeline processes bounded five-second chunks. Choose one of three sampling rates before starting: quick 2.5 fps (400 ms), balanced 5 fps (200 ms, default), or detailed 10 fps (100 ms). The choice is carried through every background continuation. Detailed mode runs more TrackNet inference and will take longer and use more battery/thermal headroom:
 
 - **Player poses:** MediaPipe Pose Landmarker Lite is asked for up to two visible people. Foot/ankle points and wrist visibility are recorded. A short-term nearest-foot-point association assigns temporary P1/P2 labels; this is not a verified identity tracker and can swap during occlusion or camera cuts. Pose is sampled on alternate frames (about 2.5 observations per second).
 - **Tennis ball:** TrackNet V1 is run on three consecutive frames to generate a tennis-ball probability heatmap and a candidate ball point. This is a model proposal, not a continuously validated track; fast motion, low resolution, camera changes and occlusion can cause misses or false detections.
@@ -71,19 +71,25 @@ The five-fps sample grid is a resource-conscious first mobile implementation, no
 
 - Source-frame preview can overlay the nearest player pose boxes/feet and ball proposal.
 - The mini-court plots calibrated P1/P2 trails, density dots and ball observations.
-- Review candidate events by accepting, rejecting or relabelling them.
+- Review candidate events in independent per-event label editors; accepting one candidate does not alter another candidate's label.
 - Add manually confirmed events at a selected timestamp.
 - Save a calibrated manual position or serve/shot location.
 - Export the full sampled timeline, event-review table and manual court positions as CSV.
 - Export a court infographic/report as SVG, PNG or PDF.
 
-CSV export of the sample timeline reads the full on-device sample log; the in-app mini-court currently uses a bounded recent sample window for display.
+CSV export of the sample timeline reads the full on-device sample log. Match metrics also stream the full sample log rather than using only the recent JSON window. The in-app mini-court uses a bounded recent window; SVG/PNG/PDF reports use an evenly sampled whole-match snapshot with a bounded point count.
 
 ## Background processing and storage
 
 Each WorkManager job analyses a bounded five-second segment and schedules the next segment. This keeps work persistent across normal activity/process exit and device restart. Android controls when work runs; battery saver, storage-provider availability, thermal state and system policy can defer processing. A user force-stop prevents work from restarting until the app is opened again.
 
 Original videos selected from the phone remain in their original location. Direct-link downloads are stored under the app's private files directory. Project metadata, frame samples, calibration points and event reviews remain in app-private storage. Uninstalling the app removes app-private projects and downloaded copies; it does not delete a selected original video.
+
+## Review-backed match metrics
+
+The match metrics card uses the full saved sample log to summarise calibrated P1/P2 observations: observation count, percentage behind the baseline, mean signed baseline distance and sampled path length. Movement is summed only across short temporal gaps and plausible single-step displacements; camera movement and P1/P2 identity swaps can still bias it.
+
+Serve placement bins (T/body/wide/outside service box) and shot placement bins (short/mid-court/deep; left/centre/right) count only accepted, manually reviewed event labels that have court coordinates. Returner-position summaries use the nearest calibrated pose on the serve target half within 1.2 seconds of an accepted serve-location marker. Rally duration and reviewed stroke counts require accepted point_start and point_end markers plus manually accepted stroke labels. The app exports these tables to CSV. Direction labels refer to the calibrated court x-axis, not necessarily the player's facing direction. These are descriptive summaries of reviewed annotations, not automatic match-stat recognition. Return-position estimates are especially sensitive to P1/P2 identity swaps, camera cuts, pose misses and an incorrectly timed or located serve marker.
 
 ## Accuracy and current limitations
 
@@ -105,7 +111,7 @@ The previous FastAPI service remains in the repository for research/reference co
 
 ## Release signing
 
-The release workflow builds version `0.5.0`. A signed APK is produced only when all four repository Actions secrets are configured:
+The current follow-up branch prepares version `0.6.0`. A signed APK is produced only when all four repository Actions secrets are configured:
 
 - `ANDROID_KEYSTORE_BASE64` — base64-encoded keystore file.
 - `ANDROID_KEYSTORE_PASSWORD` — keystore password.
