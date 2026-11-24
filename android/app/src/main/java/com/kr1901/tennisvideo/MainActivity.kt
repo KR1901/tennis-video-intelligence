@@ -556,6 +556,18 @@ private fun LocalTennisVideoApp() {
         WorkInfo.State.BLOCKED -> "Waiting for prerequisite work"
         else -> "No active Android worker detected"
     }
+    val analysisStage = project?.optString("analysis_stage").orEmpty()
+    val analysisFramesCompleted = project?.optInt("analysis_frames_completed", 0) ?: 0
+    val analysisFramesTotal = project?.optInt("analysis_frames_total", 0) ?: 0
+    val analysisVideoTimestampMs = project?.optLong("analysis_video_timestamp_ms", 0L) ?: 0L
+    val liveProgress = if (durationMs > 0L) {
+        max(
+            progress.toDouble(),
+            analysisVideoTimestampMs.coerceAtMost(durationMs) * 100.0 / durationMs
+        ).coerceIn(0.0, 100.0)
+    } else {
+        progress.toDouble()
+    }
     val previewOverlaySample = (0 until recentSampleCount)
         .mapNotNull { sampleArray.optJSONObject(it) }
         .minByOrNull { abs(it.optLong("timestamp_ms") - frameTimestampMs) }
@@ -1199,12 +1211,13 @@ private fun LocalTennisVideoApp() {
                         }
                         if (status == "queued" || status == "processing") {
                             LinearProgressIndicator(
-                                progress = (progress / 100f).coerceIn(0f, 1f),
+                                progress = (liveProgress / 100.0).toFloat().coerceIn(0f, 1f),
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
                         Text(
-                            "Status: " + status.replace('_', ' ') + " · " + progress + "%",
+                            "Status: " + status.replace('_', ' ') + " · " +
+                                String.format(Locale.US, "%.1f%%", if (status == "completed") 100.0 else liveProgress),
                             color = AppInk,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp
@@ -1215,6 +1228,21 @@ private fun LocalTennisVideoApp() {
                                 color = AppMuted,
                                 fontSize = 11.sp
                             )
+                            if (analysisStage.isNotBlank()) {
+                                Text(
+                                    "Analysis stage: " + analysisStage,
+                                    color = AppMuted,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            if (analysisFramesTotal > 0) {
+                                Text(
+                                    "Frames in current segment: " + analysisFramesCompleted + " / " +
+                                        analysisFramesTotal + " · video time " + formatDuration(analysisVideoTimestampMs),
+                                    color = AppMuted,
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
                         if (analysisNeedsRecovery) {
                             Text(
