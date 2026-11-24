@@ -561,8 +561,20 @@ internal object LocalProjectStore {
                     .put("sampled_movement_m", player.sampledMovementMeters)
             )
         }
+        val returnPositions = JSONArray()
+        analytics.returnPositions.forEach { position ->
+            returnPositions.put(
+                JSONObject()
+                    .put("player_id", position.playerId)
+                    .put("serve_zone", position.serveZone)
+                    .put("observations", position.observations)
+                    .put("mean_signed_baseline_m", position.averageSignedBaselineDistanceMeters)
+                    .put("behind_baseline_pct", position.behindBaselinePercent)
+            )
+        }
         return JSONObject()
             .put("players", players)
+            .put("return_positions", returnPositions)
             .put("serve_zones", countMap(analytics.serveZones.counts))
             .put("serve_zone_total", analytics.serveZones.total)
             .put("shot_depths", countMap(analytics.shotDepths.counts))
@@ -654,6 +666,16 @@ internal object LocalProjectStore {
         analytics.serveZones.counts.forEach { (zone, count) ->
             row("Serve placement", zone, count.toString(), "accepted events", analytics.serveZones.total,
                 "Manually reviewed serve locations binned by their calibrated court x position; outside-box points are reported separately.")
+        }
+        analytics.returnPositions.forEach { position ->
+            row(
+                "Return position",
+                position.playerId + " after " + position.serveZone + " serve",
+                String.format(Locale.US, "%+.3f", position.averageSignedBaselineDistanceMeters),
+                "m signed baseline distance",
+                position.observations,
+                "Closest calibrated pose on the serve target half within 1.2 seconds of an accepted located serve marker. P1/P2 labels are temporary and may swap."
+            )
         }
         analytics.shotDepths.counts.forEach { (depth, count) ->
             row("Shot placement", depth, count.toString(), "accepted events", analytics.shotDepths.total,
