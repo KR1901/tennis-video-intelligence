@@ -124,7 +124,7 @@ def _people_detector() -> cv2.HOGDescriptor:
 
 def detect_players(frame: np.ndarray) -> list[dict[str, Any]]:
     """Detect people with OpenCV's built-in HOG pedestrian detector."""
-    if frame is None or frame.size == 0:
+    if frame is None or frame.size == 0 or frame.shape[0] < 128 or frame.shape[1] < 64:
         return []
 
     detector = _people_detector()
@@ -398,7 +398,7 @@ def run_analysis_job(
     player_scans_with_detections = 0
     last_progress_write = 0.0
     frame_index = 0
-    hog_stride = max(1, round(fps / 1.0))
+    hog_stride = max(1, round(1.0 / sample_interval))
 
     try:
         while sampled < maximum_samples:
