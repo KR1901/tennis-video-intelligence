@@ -78,7 +78,7 @@ docker run --name tvi-api --restart unless-stopped \
   tennis-video-intelligence-api
 ```
 
-Put a TLS-terminating reverse proxy or managed HTTPS ingress in front of the container and point the Android release app at that HTTPS hostname. The volume must have at least 5 GB plus operational headroom. This container runs one API worker for the local resumable-upload store; it is a single-instance deployment starter, not a horizontally scalable production platform.
+Put a TLS-terminating reverse proxy or managed HTTPS ingress in front of the container and point the Android release app at that HTTPS hostname. The volume must have at least 10 GiB plus operational headroom. This container runs one API worker for the local resumable-upload store; it is a single-instance deployment starter, not a horizontally scalable production platform.
 
 ### Upload a test video
 
@@ -88,11 +88,11 @@ curl -X POST "http://127.0.0.1:8000/api/v1/videos" \\
   -F "file=@/path/to/your-match.mp4"
 ```
 
-The API validates uploads, supports resumable 16 MiB chunks up to 5 GB per file, inspects media with ffprobe, extracts timestamped frames, stores manual court calibrations, suggests green-region court corners for human confirmation, and starts a local background CV analysis job. Use `POST /api/v1/videos/{video_id}/analyses` to start the job, `GET /api/v1/analyses/{analysis_id}` for status and positioning, `GET /api/v1/analyses/{analysis_id}/events` to review candidates, and the `/events` POST routes to accept/reject/relabel or add human-confirmed events. `GET /api/v1/analyses/{analysis_id}/report.svg` exports an SVG. These endpoints are documented at `/docs`. The local storage adapter uses a persistent disk directory and in-process background tasks; a durable queue, multi-user isolation, shared object storage, per-user quotas and production-scale worker orchestration are not yet implemented.
+The API validates uploads, supports resumable 16 MiB chunks up to 10 GiB per file, inspects media with ffprobe, extracts timestamped frames, stores manual court calibrations, suggests green-region court corners for human confirmation, and starts a local background CV analysis job. Use `POST /api/v1/videos/{video_id}/analyses` to start the job, `GET /api/v1/analyses/{analysis_id}` for status and positioning, `GET /api/v1/analyses/{analysis_id}/events` to review candidates, and the `/events` POST routes to accept/reject/relabel or add human-confirmed events. `GET /api/v1/analyses/{analysis_id}/report.svg` exports an SVG. These endpoints are documented at `/docs`. The local storage adapter uses a persistent disk directory and in-process background tasks; a durable queue, multi-user isolation, shared object storage, per-user quotas and production-scale worker orchestration are not yet implemented.
 
 ## Android prototype
 
-See [the Android setup and usage guide](android/README.md). The app includes resumable 5 GB video uploads, Android-managed background continuation and retry, hosted HTTPS backend configuration at build time, Liquid Glass-inspired Android surfaces, court calibration, sampled candidate analysis, event review, playback, and SVG/PNG/PDF reports. Debug and release builds are checked by GitHub Actions.
+See [the Android setup and usage guide](android/README.md). The app includes resumable 10 GiB video uploads, Android-managed background continuation and retry, hosted HTTPS backend configuration at build time, Liquid Glass-inspired Android surfaces, court calibration, sampled candidate analysis, event review, playback, and SVG/PNG/PDF reports. Debug and release builds are checked by GitHub Actions.
 
 ## Release signing
 
@@ -106,7 +106,7 @@ Environment variables use the `TVI_` prefix:
 |---|---|---|
 | `TVI_ENVIRONMENT` | `development` | Runtime environment |
 | `TVI_STORAGE_DIR` | `./data/videos` | Local uploaded-video directory |
-| `TVI_MAX_UPLOAD_MB` | `4768` | Maximum upload size in MiB (~5 GB per file) |
+| `TVI_MAX_UPLOAD_MB` | `10240` | Maximum upload size in MiB (~10 GiB per file) |
 | `TVI_ALLOWED_ORIGINS` | `http://localhost:8080` | CORS origins, comma-separated |
 | `TVI_API_TOKEN` | empty | Optional shared bearer token; required when `TVI_ENVIRONMENT=production` |
 
