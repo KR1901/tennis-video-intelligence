@@ -30,8 +30,12 @@ class LocalAnalysisWorker(
     workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
 
+    override suspend fun getForegroundInfo(): ForegroundInfo =
+        createForegroundInfo("Preparing on-device analysis", 0, 0, 0L)
+
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val projectId = inputData.getString(KEY_PROJECT_ID) ?: return@withContext Result.failure()
+        setForeground(createForegroundInfo("Starting analysis worker", 0, 0, 0L))
         val startMs = inputData.getLong(KEY_START_MS, 0L).coerceAtLeast(0L)
         val frameIntervalMs = inputData.getLong(KEY_FRAME_INTERVAL_MS, DEFAULT_FRAME_INTERVAL_MS)
             .takeIf { it == 400L || it == 200L || it == 100L } ?: DEFAULT_FRAME_INTERVAL_MS
@@ -67,10 +71,13 @@ class LocalAnalysisWorker(
         setProgress(workDataOf(KEY_PROGRESS_PCT to currentProgress))
 
         val nextStartMs = min(durationMs, startMs + CHUNK_DURATION_MS)
+        val frameTotal = ((nextStartMs - startMs + frameIntervalMs - 1L) / frameIntervalMs)
+            .toInt().coerceAtLeast(1)
         val retriever = MediaMetadataRetriever()
         val additions = ArrayList<JSONObject>()
         var olderFrame: Bitmap? = null
         var previousFrame: Bitmap? = null
+        var ballDetector: TrackNetBallDetector? = null
         var previousMotionPixels: IntArray? = null
         var sampleIndex = 0
         val tracker = PlayerPoseTracker(
@@ -79,19 +86,22 @@ class LocalAnalysisWorker(
         val courtCorners = readCourtCorners(project)
 
         try {
+            publishAnalysisStage(projectId, runId, "Opening video decoder", 0, frameTotal, startMs, durationMs, true)
             retriever.setDataSource(applicationContext, Uri.parse(contentUri))
 
             // The first two frames of each continuation are context only: TrackNet requires
             // three consecutive images even when WorkManager starts a fresh process.
             if (startMs >= frameIntervalMs * 2L) {
+                publishAnalysisStage(projectId, runId, "Preparing TrackNet temporal context", 0, frameTotal, startMs, durationMs, true)
                 olderFrame = decodeFrame(retriever, startMs - frameIntervalMs * 2L)
                 previousFrame = decodeFrame(retriever, startMs - frameIntervalMs)
             }
 
+            publishAnalysisStage(projectId, runId, "Loading MediaPipe Pose model", 0, frameTotal, startMs, durationMs, true)
             OnDevicePoseAnalyzer(applicationContext).use { poseAnalyzer ->
-                TrackNetBallDetector(applicationContext).use { ballDetector ->
                     var timeMs = startMs
                     while (timeMs < nextStartMs && !isStopped) {
+                        publishAnalysisStage(projectId, runId, "Decoding frame " + (sampleIndex + 1) + " of " + frameTotal, sampleIndex, frameTotal, timeMs, durationMs, sampleIndex % NOTIFICATION_FRAME_INTERVAL == 0)
                         val frame = decodeFrame(retriever, timeMs)
                         if (frame == null) {
                             olderFrame?.recycle()
@@ -108,17 +118,24 @@ class LocalAnalysisWorker(
                             )
                             timeMs += frameIntervalMs
                             sampleIndex++
+                            publishAnalysisStage(projectId, runId, "Skipped undecodable frame " + sampleIndex + " of " + frameTotal, sampleIndex, frameTotal, timeMs, durationMs, sampleIndex % NOTIFICATION_FRAME_INTERVAL == 0)
                             continue
                         }
 
                         val ball = if (olderFrame != null && previousFrame != null) {
-                            ballDetector.detect(frame, previousFrame!!, olderFrame!!)
+                            if (ballDetector == null) {
+                                publishAnalysisStage(projectId, runId, "Loading TrackNet V1 ball model", sampleIndex, frameTotal, timeMs, durationMs, true)
+                                ballDetector = TrackNetBallDetector(applicationContext)
+                            }
+                            publishAnalysisStage(projectId, runId, "Running TrackNet ball inference", sampleIndex, frameTotal, timeMs, durationMs, true)
+                            ballDetector!!.detect(frame, previousFrame!!, olderFrame!!)
                         } else {
                             null
                         }
 
                         val players = JSONArray()
                         if (sampleIndex % POSE_SAMPLE_EVERY_N_FRAMES == 0) {
+                            publishAnalysisStage(projectId, runId, "Running MediaPipe pose inference", sampleIndex, frameTotal, timeMs, durationMs, true)
                             val poses = poseAnalyzer.detect(frame, timeMs)
                             tracker.assign(poses).forEach { tracked ->
                                 players.put(playerToJson(tracked.playerId, tracked.pose, courtCorners))
@@ -203,8 +220,8 @@ class LocalAnalysisWorker(
 
                         timeMs += frameIntervalMs
                         sampleIndex++
+                        publishAnalysisStage(projectId, runId, "Processed frame " + sampleIndex + " of " + frameTotal, sampleIndex, frameTotal, timeMs, durationMs, sampleIndex % NOTIFICATION_FRAME_INTERVAL == 0)
                     }
-                }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -219,6 +236,7 @@ class LocalAnalysisWorker(
             )
             return@withContext Result.failure()
         } finally {
+            ballDetector?.close()
             olderFrame?.recycle()
             previousFrame?.recycle()
             retriever.release()
@@ -229,6 +247,7 @@ class LocalAnalysisWorker(
             return@withContext Result.success()
         }
 
+        publishAnalysisStage(projectId, runId, "Saving analysis samples", frameTotal, frameTotal, nextStartMs, durationMs, true)
         LocalProjectStore.appendSamples(
             applicationContext,
             projectId,
@@ -310,6 +329,94 @@ class LocalAnalysisWorker(
         Result.success()
     }
 
+    private suspend fun publishAnalysisStage(
+        projectId: String,
+        runId: String,
+        stage: String,
+        framesCompleted: Int,
+        framesTotal: Int,
+        videoTimestampMs: Long,
+        durationMs: Long,
+        updateNotification: Boolean
+    ) {
+        if (!LocalProjectStore.updateAnalysisStage(
+                applicationContext, projectId, runId, stage,
+                framesCompleted, framesTotal, videoTimestampMs
+            )
+        ) return
+
+        val liveProgress = if (durationMs > 0L) {
+            ((videoTimestampMs.coerceIn(0L, durationMs) * 100L) / durationMs).toInt()
+        } else {
+            0
+        }
+        setProgress(
+            workDataOf(
+                KEY_PROGRESS_PCT to liveProgress,
+                KEY_ANALYSIS_STAGE to stage,
+                KEY_FRAMES_COMPLETED to framesCompleted,
+                KEY_FRAMES_TOTAL to framesTotal,
+                KEY_VIDEO_TIMESTAMP_MS to videoTimestampMs
+            )
+        )
+        if (updateNotification) {
+            setForeground(createForegroundInfo(stage, framesCompleted, framesTotal, videoTimestampMs))
+        }
+    }
+
+    private fun createForegroundInfo(
+        stage: String,
+        framesCompleted: Int,
+        framesTotal: Int,
+        videoTimestampMs: Long
+    ): ForegroundInfo {
+        ensureNotificationChannel()
+        val detail = if (framesTotal > 0) {
+            stage + " · " + framesCompleted + "/" + framesTotal + " frames · " +
+                android.text.format.DateUtils.formatElapsedTime(videoTimestampMs / 1000L)
+        } else {
+            stage
+        }
+        val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_report_image)
+            .setContentTitle("Analysing tennis video")
+            .setContentText(detail)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .apply {
+                if (framesTotal > 0) {
+                    setProgress(framesTotal, framesCompleted.coerceIn(0, framesTotal), false)
+                } else {
+                    setProgress(0, 0, true)
+                }
+            }
+            .build()
+
+        return when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM -> {
+                ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING)
+            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            }
+            else -> ForegroundInfo(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun ensureNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (manager.getNotificationChannel(NOTIFICATION_CHANNEL_ID) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(NOTIFICATION_CHANNEL_ID, "On-device video analysis", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "Shows progress while analysing a user-selected tennis video on this device"
+                    setShowBadge(false)
+                }
+            )
+        }
+    }
     private fun toBallTrajectoryObservation(sample: JSONObject): BallTrajectoryObservation? {
         val ball = sample.optJSONObject("ball") ?: return null
         if (!ball.optBoolean("detected", false)) return null
@@ -414,9 +521,16 @@ class LocalAnalysisWorker(
         const val KEY_FRAME_INTERVAL_MS = "frame_interval_ms"
         const val KEY_PROGRESS_PCT = "progress_pct"
         const val KEY_RUN_ID = "run_id"
+        const val KEY_ANALYSIS_STAGE = "analysis_stage"
+        const val KEY_FRAMES_COMPLETED = "frames_completed"
+        const val KEY_FRAMES_TOTAL = "frames_total"
+        const val KEY_VIDEO_TIMESTAMP_MS = "video_timestamp_ms"
         private const val LEGACY_RUN_ID = "legacy"
         private const val DEFAULT_FRAME_INTERVAL_MS = 200L
-        private const val CHUNK_DURATION_MS = 5_000L
+        private const val CHUNK_DURATION_MS = 15_000L
+        private const val NOTIFICATION_FRAME_INTERVAL = 5
+        private const val NOTIFICATION_CHANNEL_ID = "tvi-on-device-analysis"
+        private const val NOTIFICATION_ID = 0x545641
         private const val POSE_SAMPLE_EVERY_N_FRAMES = 2
         private const val MODEL_WIDTH = 640
         private const val MODEL_HEIGHT = 360
