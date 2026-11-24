@@ -167,6 +167,19 @@ internal object LocalProjectStore {
         if (points.isEmpty()) project.put("manual_positions", JSONArray())
 
         val validCorners = points.takeIf { it.size == 4 }
+        if (validCorners != null) {
+            val manualPositions = project.optJSONArray("manual_positions") ?: JSONArray()
+            for (index in 0 until manualPositions.length()) {
+                val position = manualPositions.optJSONObject(index) ?: continue
+                val measurement = CourtProjector.project(
+                    validCorners,
+                    position.optDouble("image_x").toFloat(),
+                    position.optDouble("image_y").toFloat()
+                )
+                applyMeasurement(position, measurement)
+            }
+            project.put("manual_positions", manualPositions)
+        }
         if (validCorners != null || points.isEmpty()) {
             val log = sampleLogFile(context, id)
             if (log.isFile) {
