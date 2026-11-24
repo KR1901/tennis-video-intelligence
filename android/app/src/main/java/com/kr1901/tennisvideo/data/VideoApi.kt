@@ -148,13 +148,21 @@ class VideoApi(
         timestampSeconds: Double,
         eventType: String,
         playerId: String,
-        note: String
+        note: String,
+        serveNumber: Int? = null,
+        serveResult: String? = null,
+        shotDepth: String? = null,
+        shotDirection: String? = null
     ): JSONObject {
         val payload = JSONObject()
             .put("timestamp_seconds", timestampSeconds)
             .put("event_type", eventType)
             .put("player_id", playerId)
             .put("note", note)
+        serveNumber?.let { payload.put("serve_number", it) }
+        serveResult?.takeIf { it.isNotBlank() }?.let { payload.put("serve_result", it) }
+        shotDepth?.takeIf { it.isNotBlank() }?.let { payload.put("shot_depth", it) }
+        shotDirection?.takeIf { it.isNotBlank() }?.let { payload.put("shot_direction", it) }
         return postJson("/api/v1/analyses/$analysisId/events", payload)
     }
 
