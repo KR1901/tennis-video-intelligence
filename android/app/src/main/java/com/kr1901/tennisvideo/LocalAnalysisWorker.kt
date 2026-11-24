@@ -298,7 +298,8 @@ class LocalAnalysisWorker(
                 projectId,
                 "failed",
                 100,
-                "No video frames could be decoded."
+                "No video frames could be decoded.",
+                expectedRunId = runId
             )
         }
         Result.success()
