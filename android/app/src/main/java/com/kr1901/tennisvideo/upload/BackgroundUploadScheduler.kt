@@ -38,6 +38,9 @@ object BackgroundUploadScheduler {
     fun schedule(context: Context, uri: Uri): Boolean {
         val totalBytes = fileSize(context, uri)
         if (totalBytes <= 0L) throw IOException("Android could not determine the selected video's file size.")
+        if (totalBytes > VideoApi.MAX_UPLOAD_BYTES) {
+            throw IOException("This video is larger than the 5 GB upload limit.")
+        }
 
         val previous = UploadRuntimeStore.state(context)
         if (previous.status in listOf("QUEUED", "UPLOADING")) {
