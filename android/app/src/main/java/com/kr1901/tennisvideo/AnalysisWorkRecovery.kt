@@ -24,7 +24,12 @@ internal object AnalysisWorkRecovery {
             null -> true
             WorkInfo.State.ENQUEUED,
             WorkInfo.State.BLOCKED -> {
-                queuedAtMs <= 0L || nowMs - queuedAtMs >= QUEUED_TIMEOUT_MS
+                val referenceTime = if (projectStatus == "processing" && lastActivityAtMs > 0L) {
+                    lastActivityAtMs
+                } else {
+                    queuedAtMs
+                }
+                referenceTime <= 0L || nowMs - referenceTime >= QUEUED_TIMEOUT_MS
             }
             WorkInfo.State.RUNNING -> {
                 lastActivityAtMs > 0L &&
