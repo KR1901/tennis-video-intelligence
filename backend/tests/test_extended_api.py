@@ -23,6 +23,7 @@ def _video_file(tmp_path, suffix=".mp4"):
     (tmp_path / f"{video_id}.json").write_text(json.dumps(metadata), encoding="utf-8")
     return video_id, path
 
+
 def test_video_stream_supports_byte_ranges(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
@@ -39,6 +40,7 @@ def test_video_stream_supports_byte_ranges(tmp_path, monkeypatch) -> None:
     assert response.headers["content-range"] == "bytes 3-7/16"
     get_settings.cache_clear()
 
+
 def test_video_stream_rejects_unsatisfiable_byte_range(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
@@ -52,6 +54,7 @@ def test_video_stream_rejects_unsatisfiable_byte_range(tmp_path, monkeypatch) ->
     assert response.status_code == 416
     assert response.headers["content-range"] == "bytes */16"
     get_settings.cache_clear()
+
 
 def test_delete_video_removes_original_metadata_and_analysis_files(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
@@ -75,6 +78,7 @@ def test_delete_video_removes_original_metadata_and_analysis_files(tmp_path, mon
     assert unrelated.exists()
     get_settings.cache_clear()
 
+
 def test_api_token_is_optional_but_protects_non_health_endpoints(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
@@ -91,6 +95,7 @@ def test_api_token_is_optional_but_protects_non_health_endpoints(tmp_path, monke
     assert authorised.status_code == 404
     get_settings.cache_clear()
 
+
 def test_production_settings_require_api_token(monkeypatch) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv("TVI_ENVIRONMENT", "production")
@@ -99,6 +104,7 @@ def test_production_settings_require_api_token(monkeypatch) -> None:
     with pytest.raises(ValueError, match="TVI_API_TOKEN must be configured"):
         get_settings()
     get_settings.cache_clear()
+
 
 def test_analysis_png_and_pdf_report_endpoints(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
@@ -139,6 +145,7 @@ def test_analysis_png_and_pdf_report_endpoints(tmp_path, monkeypatch) -> None:
     assert pdf.headers["content-type"] == "application/pdf"
     assert pdf.content.startswith(b"%PDF-1.4")
     get_settings.cache_clear()
+
 
 def test_manual_event_metadata_is_persisted_for_review_metrics(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
