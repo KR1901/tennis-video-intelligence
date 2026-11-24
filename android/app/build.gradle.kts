@@ -38,6 +38,10 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            // Let the offline preview app be installed alongside an existing release.
+            applicationIdSuffix = ".debug"
+        }
         getByName("release") {
             isMinifyEnabled = false
             if (releaseSigningConfigured) {
