@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
+import numpy as np
 from fastapi import (
     APIRouter,
     File,
@@ -17,7 +18,6 @@ from fastapi import (
     UploadFile,
     status,
 )
-import numpy as np
 from fastapi.responses import StreamingResponse
 
 from app.core.config import get_settings
