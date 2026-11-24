@@ -285,7 +285,22 @@ private fun TennisVideoApp() {
                     )
                 }
                 selectedUri = uri
-                selectedName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected video"
+                selectedName = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.query(
+                            uri,
+                            arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                            null,
+                            null,
+                            null
+                        )?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val column = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                if (column >= 0) cursor.getString(column) else null
+                            } else null
+                        }
+                    }.getOrNull()
+                } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "Selected video"
                 UploadRuntimeStore.saveSelection(context, uri, selectedName)
                 uploadProgress = 0f
                 uploadedBytes = 0L
