@@ -88,14 +88,18 @@ jobs:
           retention-days: 30
 
       - name: Publish GitHub Release
-        if: steps.signing.outputs.configured == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Release v0.4.0:')))
+        if: steps.signing.outputs.configured == 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: v0.4.0
         run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists; leaving the published release unchanged."
+            exit 0
+          fi
           APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           gh release create "$VERSION" "$APK" \
             --title "Tennis Video Intelligence $VERSION" \
-            --notes "Signed Android release build. Backend computer-vision detections remain review candidates; see README and release notes for current limitations." \
+            --notes "Signed Android release. Includes resumable video uploads (up to 10 GiB), upload progress, HTTPS-only release networking and the Liquid Glass-inspired interface. Backend computer-vision detections remain review candidates and require human confirmation." \
             --target "$GITHUB_SHA" \
             --latest
