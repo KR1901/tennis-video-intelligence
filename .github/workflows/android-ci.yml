@@ -36,7 +36,7 @@ jobs:
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -mindepth 2 -maxdepth 2 -type f -name sdkmanager | sort | tail -n 1)"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
       - name: Set up Gradle 9.6.0
         uses: gradle/actions/setup-gradle@v4
