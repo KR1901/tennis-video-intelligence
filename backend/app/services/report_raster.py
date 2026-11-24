@@ -37,12 +37,22 @@ def render_analysis_png(job: dict[str, Any]) -> bytes:
     canvas = np.full((height, width, 3), (247, 249, 248), dtype=np.uint8)
     summary = job.get("summary") if isinstance(job.get("summary"), dict) else {}
     players = summary.get("players") if isinstance(summary.get("players"), dict) else {}
-    heatmaps = summary.get("position_heatmaps") if isinstance(summary.get("position_heatmaps"), dict) else {}
+    heatmaps = (
+        summary.get("position_heatmaps")
+        if isinstance(summary.get("position_heatmaps"), dict)
+        else {}
+    )
     reviewed = calculate_reviewed_match_metrics(job)
 
     _text(canvas, "TENNIS VIDEO INTELLIGENCE", 60, 76, 1.05, (35, 51, 42), 2)
     _text(canvas, "Court positioning and reviewed-event report", 60, 116, 0.65)
-    _text(canvas, f"Video: {job.get('video_id', 'unknown')}  |  Analysis: {job.get('analysis_id', 'unknown')}", 60, 152, 0.48)
+    _text(
+        canvas,
+        f"Video: {job.get('video_id', 'unknown')}  |  Analysis: {job.get('analysis_id', 'unknown')}",
+        60,
+        152,
+        0.48,
+    )
     _text(canvas, f"Completed: {job.get('completed_at', 'unknown')}", 60, 180, 0.48)
 
     court_left, court_top, court_width, court_height = 90, 245, 480, 940
@@ -74,14 +84,50 @@ def render_analysis_png(job: dict[str, Any]) -> bytes:
 
     white = (255, 255, 255)
     cv2.rectangle(canvas, (court_left, court_top), (court_right, court_bottom), white, 4)
-    cv2.line(canvas, (court_left, (court_top + court_bottom) // 2), (court_right, (court_top + court_bottom) // 2), white, 3)
-    singles_offset = int(court_width * (COURT.doubles_width_m - COURT.singles_width_m) / (2 * COURT.doubles_width_m))
-    cv2.line(canvas, (court_left + singles_offset, court_top), (court_left + singles_offset, court_bottom), white, 2)
-    cv2.line(canvas, (court_right - singles_offset, court_top), (court_right - singles_offset, court_bottom), white, 2)
+    net_y = (court_top + court_bottom) // 2
+    cv2.line(canvas, (court_left, net_y), (court_right, net_y), white, 3)
+    singles_offset = int(
+        court_width
+        * (COURT.doubles_width_m - COURT.singles_width_m)
+        / (2 * COURT.doubles_width_m)
+    )
+    cv2.line(
+        canvas,
+        (court_left + singles_offset, court_top),
+        (court_left + singles_offset, court_bottom),
+        white,
+        2,
+    )
+    cv2.line(
+        canvas,
+        (court_right - singles_offset, court_top),
+        (court_right - singles_offset, court_bottom),
+        white,
+        2,
+    )
     service_offset = int(court_height * 6.4 / COURT.length_m)
-    cv2.line(canvas, (court_left, court_top + service_offset), (court_right, court_top + service_offset), white, 2)
-    cv2.line(canvas, (court_left, court_bottom - service_offset), (court_right, court_bottom - service_offset), white, 2)
-    cv2.line(canvas, (court_left + court_width // 2, court_top + service_offset), (court_left + court_width // 2, court_bottom - service_offset), white, 2)
+    cv2.line(
+        canvas,
+        (court_left, court_top + service_offset),
+        (court_right, court_top + service_offset),
+        white,
+        2,
+    )
+    cv2.line(
+        canvas,
+        (court_left, court_bottom - service_offset),
+        (court_right, court_bottom - service_offset),
+        white,
+        2,
+    )
+    center_x = court_left + court_width // 2
+    cv2.line(
+        canvas,
+        (center_x, court_top + service_offset),
+        (center_x, court_bottom - service_offset),
+        white,
+        2,
+    )
     _text(canvas, "FAR BASELINE", court_left, court_top - 18, 0.45)
     _text(canvas, "NEAR BASELINE", court_left, court_bottom + 30, 0.45)
 
@@ -96,7 +142,14 @@ def render_analysis_png(job: dict[str, Any]) -> bytes:
         display = "N/A" if average is None else f"{float(average):+.2f} m"
         _text(canvas, label, panel_x, y, 0.53)
         _text(canvas, display, panel_x, y + 44, 0.9, (36, 140, 105), 2)
-        _text(canvas, f"Samples: {item.get('samples', 0)}  |  Coverage: {float(item.get('coverage_pct', 0.0)):.1f}%", panel_x, y + 75, 0.43)
+        coverage = float(item.get("coverage_pct", 0.0))
+        _text(
+            canvas,
+            f"Samples: {item.get('samples', 0)}  |  Coverage: {coverage:.1f}%",
+            panel_x,
+            y + 75,
+            0.43,
+        )
         y += 145
 
     _text(canvas, "REVIEWED EVENT STATISTICS", panel_x, y, 0.65, (35, 51, 42), 2)
@@ -106,13 +159,38 @@ def render_analysis_png(job: dict[str, Any]) -> bytes:
     rally = reviewed["rally_length"]
     winner_error = reviewed["winner_error_classification"]
     lines = [
-        ("Serve attempts / in-rate", f"{serve['recorded_attempts']} / {serve['serve_in_percentage'] if serve['serve_in_percentage'] is not None else 'N/A'}"),
-        ("First / second serves", f"{serve['first_serve_events']} / {serve['second_serve_events']}"),
-        ("Serve zones T / body / wide", f"{serve['zones']['T']} / {serve['zones']['body']} / {serve['zones']['wide']}"),
-        ("Shot depth short / mid / deep", f"{shot['depths']['short']} / {shot['depths']['mid_court']} / {shot['depths']['deep']}"),
-        ("Completed / incomplete points", f"{rally['completed_points']} / {rally['incomplete_points']}"),
-        ("Mean rally contacts", rally["average_contacts_per_point"] if rally["average_contacts_per_point"] is not None else "N/A"),
-        ("Winners / forced / unforced", f"{winner_error['winners']} / {winner_error['forced_errors']} / {winner_error['unforced_errors']}"),
+        (
+            "Serve attempts / in-rate",
+            f"{serve['recorded_attempts']} / "
+            f"{serve['serve_in_percentage'] if serve['serve_in_percentage'] is not None else 'N/A'}",
+        ),
+        (
+            "First / second serves",
+            f"{serve['first_serve_events']} / {serve['second_serve_events']}",
+        ),
+        (
+            "Serve zones T / body / wide",
+            f"{serve['zones']['T']} / {serve['zones']['body']} / {serve['zones']['wide']}",
+        ),
+        (
+            "Shot depth short / mid / deep",
+            f"{shot['depths']['short']} / {shot['depths']['mid_court']} / {shot['depths']['deep']}",
+        ),
+        (
+            "Completed / incomplete points",
+            f"{rally['completed_points']} / {rally['incomplete_points']}",
+        ),
+        (
+            "Mean rally contacts",
+            rally["average_contacts_per_point"]
+            if rally["average_contacts_per_point"] is not None
+            else "N/A",
+        ),
+        (
+            "Winners / forced / unforced",
+            f"{winner_error['winners']} / {winner_error['forced_errors']} / "
+            f"{winner_error['unforced_errors']}",
+        ),
     ]
     for label, value in lines:
         _text(canvas, label, panel_x, y, 0.43)
@@ -121,9 +199,28 @@ def render_analysis_png(job: dict[str, Any]) -> bytes:
 
     footer_y = 1335
     _text(canvas, "RELIABILITY", 60, footer_y, 0.58, (35, 51, 42), 2)
-    _text(canvas, "CV player/ball proposals remain unverified. Confirm court calibration and event labels.", 60, footer_y + 34, 0.46)
-    _text(canvas, f"Human-accepted events: {reviewed['accepted_event_count']}  |  Review coverage: {reviewed['review_coverage_pct']:.1f}%", 60, footer_y + 62, 0.46)
-    _text(canvas, "Positive baseline distance = behind baseline; negative = inside court. Distances are metres.", 60, footer_y + 90, 0.43)
+    _text(
+        canvas,
+        "CV player/ball proposals remain unverified. Confirm court calibration and event labels.",
+        60,
+        footer_y + 34,
+        0.46,
+    )
+    _text(
+        canvas,
+        f"Human-accepted events: {reviewed['accepted_event_count']}  |  "
+        f"Review coverage: {reviewed['review_coverage_pct']:.1f}%",
+        60,
+        footer_y + 62,
+        0.46,
+    )
+    _text(
+        canvas,
+        "Positive baseline distance = behind baseline; negative = inside court. Distances are metres.",
+        60,
+        footer_y + 90,
+        0.43,
+    )
 
     ok, encoded = cv2.imencode(".png", canvas)
     if not ok:
