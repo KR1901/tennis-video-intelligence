@@ -16,6 +16,9 @@ A checked item means the code path exists; it does not imply match-level accurac
 - [x] Enforce a 4,768 MiB local video ceiling; reject unverified file sizes.
 - [x] Preview a decoded frame at a selected timestamp.
 - [x] Save four manually tapped outer-court corners in app-private project data.
+- [x] Fit a four-point projective transform to the standard doubles-court plane.
+- [x] Save manually tapped player ground points with court x/y metres and signed baseline distance.
+- [x] Export manually measured court points as CSV.
 - [x] Run bounded on-device frame-sampling chunks with WorkManager continuation.
 - [x] Persist sample timestamps, approximate green-pixel coverage, brightness and coarse frame-change values.
 - [x] Export the sample timeline as CSV.
@@ -53,7 +56,7 @@ A checked item means the code path exists; it does not imply match-level accurac
 ## Reliability and product constraints
 
 - The current offline pass is a coarse visual sampler, not a tennis detector.
-- Manual court corners are stored but are not yet used to transform observations into metres.
+- Manual court corners are used to transform a manually tapped ground point into court metres. This is a single-frame manual measurement, not an automatic player detector or a temporal player track.
 - No player identity, player tracking, ball tracking, shot recognition, serve recognition or automatic event statistics are implemented in the offline Android path.
 - WorkManager persists and resumes pending work, but Android controls scheduling and may defer work under battery/system constraints. A force-stop prevents work from restarting until the user opens the app.
 - Original videos remain in the user's selected storage location. Project data is private to the app and is removed if the app is uninstalled.
