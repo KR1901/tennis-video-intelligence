@@ -151,8 +151,14 @@ internal object LocalProjectStore {
      * This avoids rewriting a multi-hour timeline on every WorkManager chunk.
      */
     @Synchronized
-    fun appendSamples(context: Context, id: String, additions: List<JSONObject>) {
+    fun appendSamples(
+        context: Context,
+        id: String,
+        additions: List<JSONObject>,
+        expectedRunId: String? = null
+    ) {
         val project = load(context, id) ?: return
+        if (!expectedRunId.isNullOrBlank() && !isCurrentAnalysisRun(context, id, expectedRunId)) return
         val lastTimestamp = project.optLong("last_sample_timestamp_ms", -1L)
         val accepted = additions
             .filter { it.optLong("timestamp_ms", -1L) > lastTimestamp }
@@ -182,8 +188,10 @@ internal object LocalProjectStore {
         id: String,
         status: String,
         progressPct: Int,
-        error: String = ""
+        error: String = "",
+        expectedRunId: String? = null
     ) {
+        if (!expectedRunId.isNullOrBlank() && !isCurrentAnalysisRun(context, id, expectedRunId)) return
         update(context, id) { project ->
             project.put("analysis_status", status)
             project.put("analysis_last_activity_ms", System.currentTimeMillis())
@@ -377,7 +385,13 @@ internal object LocalProjectStore {
     }
 
     @Synchronized
-    fun appendEventCandidates(context: Context, id: String, additions: List<JSONObject>) {
+    fun appendEventCandidates(
+        context: Context,
+        id: String,
+        additions: List<JSONObject>,
+        expectedRunId: String? = null
+    ) {
+        if (!expectedRunId.isNullOrBlank() && !isCurrentAnalysisRun(context, id, expectedRunId)) return
         update(context, id) { project ->
             val events = project.optJSONArray("events") ?: JSONArray()
             val cornersJson = project.optJSONArray("court_corners") ?: JSONArray()
