@@ -111,6 +111,7 @@ private fun LocalTennisVideoApp() {
     var timestampText by remember { mutableStateOf("0") }
     var frameTimestampMs by remember { mutableStateOf(0L) }
     var markPlayerPosition by remember { mutableStateOf(false) }
+    var markEventLocation by remember { mutableStateOf(false) }
     var manualEventType by remember { mutableStateOf("serve") }
     var manualEventNote by remember { mutableStateOf("") }
     val courtCorners = remember { mutableStateListOf<Pair<Float, Float>>() }
@@ -125,6 +126,7 @@ private fun LocalTennisVideoApp() {
             }
             frameTimestampMs = 0L
             markPlayerPosition = false
+            markEventLocation = false
             courtCorners.clear()
             val storedCorners = saved.optJSONArray("court_corners") ?: JSONArray()
             for (index in 0 until storedCorners.length()) {
@@ -460,7 +462,7 @@ private fun LocalTennisVideoApp() {
                                 Canvas(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .pointerInput(projectId, courtCorners.size, markPlayerPosition) {
+                                        .pointerInput(projectId, courtCorners.size, markPlayerPosition, markEventLocation, manualEventType, manualEventNote) {
                                             detectTapGestures { offset ->
                                                 val x = (offset.x / size.width).coerceIn(0f, 1f)
                                                 val y = (offset.y / size.height).coerceIn(0f, 1f)
@@ -476,32 +478,50 @@ private fun LocalTennisVideoApp() {
                                                             message = "Court corner " + points.size + " saved locally."
                                                         }
                                                     }
-                                                } else if (markPlayerPosition) {
+                                                } else if (markPlayerPosition || markEventLocation) {
                                                     val id = projectId
                                                     val measurement = CourtProjector.project(courtCorners.toList(), x, y)
                                                     if (id == null || measurement == null) {
                                                         message = "This point could not be projected. Check that the four court corners are distinct and correctly ordered."
                                                     } else {
                                                         val timestamp = frameTimestampMs
+                                                        val savePlayerPoint = markPlayerPosition
                                                         markPlayerPosition = false
+                                                        markEventLocation = false
                                                         scope.launch {
                                                             withContext(Dispatchers.IO) {
-                                                                LocalProjectStore.addManualPosition(
-                                                                    context,
-                                                                    id,
-                                                                    timestamp,
-                                                                    x,
-                                                                    y,
-                                                                    measurement
-                                                                )
+                                                                if (savePlayerPoint) {
+                                                                    LocalProjectStore.addManualPosition(
+                                                                        context,
+                                                                        id,
+                                                                        timestamp,
+                                                                        x,
+                                                                        y,
+                                                                        measurement
+                                                                    )
+                                                                } else {
+                                                                    LocalProjectStore.addManualEvent(
+                                                                        context,
+                                                                        id,
+                                                                        timestamp,
+                                                                        manualEventType.trim(),
+                                                                        manualEventNote.trim(),
+                                                                        measurement
+                                                                    )
+                                                                }
                                                             }
                                                             project = withContext(Dispatchers.IO) {
                                                                 LocalProjectStore.load(context, id)
                                                             }
-                                                            message = "Saved " + measurement.playerEnd +
-                                                                "-side position: " +
-                                                                String.format(Locale.US, "x %.2f m, y %.2f m; baseline distance %.2f m", measurement.xMeters, measurement.yMeters, measurement.baselineDistanceMeters) +
-                                                                ". Positive means behind the baseline; negative means inside the court."
+                                                            message = if (savePlayerPoint) {
+                                                                "Saved " + measurement.playerEnd +
+                                                                    "-side position: " +
+                                                                    String.format(Locale.US, "x %.2f m, y %.2f m; baseline distance %.2f m", measurement.xMeters, measurement.yMeters, measurement.baselineDistanceMeters) +
+                                                                    ". Positive means behind the baseline; negative means inside the court."
+                                                            } else {
+                                                                "Saved reviewed " + manualEventType + " location at " +
+                                                                    String.format(Locale.US, "x %.2f m, y %.2f m", measurement.xMeters, measurement.yMeters) + "."
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -582,7 +602,10 @@ private fun LocalTennisVideoApp() {
                         Text("Saved court corners: " + courtCorners.size + " / 4", color = AppMuted, fontSize = 12.sp)
                         if (courtCorners.size == 4) {
                             OutlinedButton(
-                                onClick = { markPlayerPosition = !markPlayerPosition },
+                                onClick = {
+                                    markPlayerPosition = !markPlayerPosition
+                                    markEventLocation = false
+                                },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(if (markPlayerPosition) "Cancel player-point tap" else "Mark player foot on this frame")
@@ -596,6 +619,22 @@ private fun LocalTennisVideoApp() {
                                 color = if (markPlayerPosition) TennisGreen else AppMuted,
                                 fontSize = 12.sp
                             )
+                            OutlinedButton(
+                                onClick = {
+                                    markEventLocation = !markEventLocation
+                                    markPlayerPosition = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (markEventLocation) "Cancel event-location tap" else "Mark serve / shot location on this frame")
+                            }
+                            if (markEventLocation) {
+                                Text(
+                                    "The next tap records the event type shown in the event-review section below at this timestamp and saves its court x/y metres. Use this for a manually identified serve or shot landing point; it is not automatically detected.",
+                                    color = TennisGreen,
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
                         Text("Saved manual positions: " + manualPositionCount, color = AppMuted, fontSize = 12.sp)
                         latestManualPosition?.let { position ->
@@ -745,6 +784,11 @@ private fun LocalTennisVideoApp() {
                         color = AppMuted,
                         fontSize = 12.sp
                     )
+                    Text(
+                        "Edit the event-type field below before accepting a candidate to relabel it. The app saves the corrected label as user-reviewed.",
+                        color = AppMuted,
+                        fontSize = 11.sp
+                    )
                     val firstEvent = (eventCount - 12).coerceAtLeast(0)
                     for (index in firstEvent until eventCount) {
                         val event = eventArray.optJSONObject(index) ?: continue
@@ -772,7 +816,7 @@ private fun LocalTennisVideoApp() {
                                             val id = projectId
                                             if (id != null) scope.launch {
                                                 withContext(Dispatchers.IO) {
-                                                    LocalProjectStore.reviewEvent(context, id, eventId, true)
+                                                    LocalProjectStore.reviewEvent(context, id, eventId, true, manualEventType.trim())
                                                     LocalProjectStore.load(context, id)
                                                 }.also { project = it }
                                                 message = "Candidate accepted as a reviewed event. Verify its type before using the metric."
