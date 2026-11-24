@@ -1,0 +1,172 @@
+package com.kr1901.tennisvideo.data
+
+import android.content.ContentResolver
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.Locale
+import java.util.UUID
+
+class VideoApi(
+    baseUrl: String,
+    private val contentResolver: ContentResolver
+) {
+    private val baseUrl = baseUrl.trim().trimEnd('/')
+
+    fun health(): JSONObject = requestJson("/health", "GET")
+
+    fun uploadVideo(uri: Uri): JSONObject {
+        val fileName = displayName(uri)
+        val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+        val boundary = "TviBoundary-${UUID.randomUUID()}"
+        val connection = openConnection("/api/v1/videos", "POST")
+        connection.doOutput = true
+        connection.setChunkedStreamingMode(1024 * 1024)
+        connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        connection.setRequestProperty("Accept", "application/json")
+
+        try {
+            BufferedOutputStream(connection.outputStream).use { output ->
+                output.write("--$boundary\r\n".toByteArray())
+                output.write(
+                    "Content-Disposition: form-data; name=\"file\"; filename=\"${safeFileName(fileName)}\"\r\n".toByteArray()
+                )
+                output.write("Content-Type: $mimeType\r\n\r\n".toByteArray())
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw IOException("Android could not open the selected video.")
+                BufferedInputStream(input).use { source ->
+                    source.copyTo(output, bufferSize = 128 * 1024)
+                }
+                output.write("\r\n--$boundary--\r\n".toByteArray())
+                output.flush()
+            }
+            return readJsonResponse(connection)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    fun inspectVideo(videoId: String): JSONObject =
+        requestJson("/api/v1/videos/$videoId/inspect", "POST")
+
+    fun getVideo(videoId: String): JSONObject =
+        requestJson("/api/v1/videos/$videoId", "GET")
+
+    fun getFrame(videoId: String, timestampSeconds: Double): Bitmap {
+        val timestamp = String.format(Locale.US, "%.3f", timestampSeconds)
+        val connection = openConnection(
+            "/api/v1/videos/$videoId/frame?timestamp_seconds=$timestamp",
+            "GET"
+        )
+        connection.setRequestProperty("Accept", "image/jpeg")
+        try {
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.use { it.readBytes() } ?: ByteArray(0)
+            if (code !in 200..299) {
+                throw IOException("Server returned HTTP $code: ${body.toString(Charsets.UTF_8)}")
+            }
+            return BitmapFactory.decodeByteArray(body, 0, body.size)
+                ?: throw IOException("The frame returned by the server was not a readable JPEG.")
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    fun createCalibration(
+        videoId: String,
+        timestampSeconds: Double,
+        imagePoints: List<Pair<Float, Float>>
+    ): JSONObject {
+        val points = JSONArray()
+        imagePoints.forEach { (x, y) ->
+            points.put(JSONArray().put(x.toDouble()).put(y.toDouble()))
+        }
+        val payload = JSONObject()
+            .put("frame_timestamp_seconds", timestampSeconds)
+            .put("court_area", "doubles")
+            .put("image_points", points)
+        return postJson("/api/v1/videos/$videoId/calibrations", payload)
+    }
+
+    fun projectPoint(
+        videoId: String,
+        calibrationId: String,
+        imagePoint: Pair<Float, Float>,
+        playerEnd: String
+    ): JSONObject {
+        val payload = JSONObject()
+            .put("image_point", JSONArray().put(imagePoint.first.toDouble()).put(imagePoint.second.toDouble()))
+            .put("player_end", playerEnd)
+        return postJson(
+            "/api/v1/videos/$videoId/calibrations/$calibrationId/project",
+            payload
+        )
+    }
+
+    private fun displayName(uri: Uri): String {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (column >= 0) return cursor.getString(column)
+                }
+            }
+        return uri.lastPathSegment?.substringAfterLast('/') ?: "match.mp4"
+    }
+
+    private fun safeFileName(name: String): String =
+        name.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "match.mp4" }
+
+    private fun postJson(path: String, payload: JSONObject): JSONObject {
+        val connection = openConnection(path, "POST")
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.setRequestProperty("Accept", "application/json")
+        try {
+            connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+            return readJsonResponse(connection)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun requestJson(path: String, method: String): JSONObject {
+        val connection = openConnection(path, method)
+        connection.setRequestProperty("Accept", "application/json")
+        try {
+            return readJsonResponse(connection)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun openConnection(path: String, method: String): HttpURLConnection {
+        val connection = URL("$baseUrl$path").openConnection() as HttpURLConnection
+        connection.requestMethod = method
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 120_000
+        connection.useCaches = false
+        return connection
+    }
+
+    private fun readJsonResponse(connection: HttpURLConnection): JSONObject {
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val body = stream?.use { it.readBytes().toString(Charsets.UTF_8) }.orEmpty()
+        if (code !in 200..299) {
+            val detail = runCatching { JSONObject(body).optString("detail", body) }.getOrDefault(body)
+            throw IOException("Server returned HTTP $code: $detail")
+        }
+        return JSONObject(body)
+    }
+}
