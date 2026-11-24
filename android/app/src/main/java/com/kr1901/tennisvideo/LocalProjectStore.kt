@@ -122,9 +122,12 @@ internal object LocalProjectStore {
 
     @Synchronized
     fun prepareAnalysis(context: Context, id: String) {
+        val queuedAtMs = System.currentTimeMillis()
         update(context, id) { project ->
             project.put("analysis_status", "queued")
             project.put("analysis_error", "")
+            project.put("analysis_queued_at_ms", queuedAtMs)
+            project.put("analysis_last_activity_ms", 0L)
             project.put("progress_pct", 0)
             project.put("samples", JSONArray())
             project.put("sample_count", 0)
@@ -174,6 +177,7 @@ internal object LocalProjectStore {
     ) {
         update(context, id) { project ->
             project.put("analysis_status", status)
+            project.put("analysis_last_activity_ms", System.currentTimeMillis())
             project.put("progress_pct", progressPct.coerceIn(0, 100))
             project.put("analysis_error", error)
         }
