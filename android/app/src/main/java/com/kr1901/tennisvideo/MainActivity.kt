@@ -58,6 +58,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import org.json.JSONObject
+import org.json.JSONArray
 import kotlin.math.min
 
 private val CourtGreen = Color(0xFF16A085)
@@ -103,6 +105,27 @@ private fun TennisVideoApp() {
     var statusMessage by remember { mutableStateOf("Connect to the backend to begin.") }
     var busy by remember { mutableStateOf(false) }
     val calibrationPoints = remember { mutableStateListOf<Pair<Float, Float>>() }
+    var analysisId by remember { mutableStateOf<String?>(null) }
+    var analysisStatus by remember { mutableStateOf("Not started") }
+    var analysisProgress by remember { mutableStateOf(0) }
+    var analysisSummary by remember { mutableStateOf<JSONObject?>(null) }
+    var reportBytes by remember { mutableStateOf<ByteArray?>(null) }
+    val eventCandidates = remember { mutableStateListOf<JSONObject>() }
+
+    val reportSaver = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("image/svg+xml"),
+        onResult = { uri ->
+            val bytes = reportBytes
+            if (uri != null && bytes != null) {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    statusMessage = "SVG report saved."
+                } catch (error: Exception) {
+                    statusMessage = "Could not save SVG report: ${error.message}"
+                }
+            }
+        }
+    )
 
     val videoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -115,6 +138,10 @@ private fun TennisVideoApp() {
                     )
                 }
                 selectedUri = uri
+                analysisId = null
+                analysisSummary = null
+                eventCandidates.clear()
+                analysisStatus = "Not started"
                 selectedName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected video"
                 videoId = null
                 calibrationId = null
@@ -127,6 +154,62 @@ private fun TennisVideoApp() {
     )
 
     fun api(): VideoApi = VideoApi(apiBaseUrl, context.contentResolver)
+\n    fun reviewCandidate(event: JSONObject, eventType: String?) {
+        val id = analysisId ?: return
+        val eventId = event.optString("event_id")
+        if (eventId.isBlank()) return
+        scope.launch {
+            busy = true
+            statusMessage = "Saving event review..."
+            try {
+                withContext(Dispatchers.IO) {
+                    api().reviewEvent(
+                        id,
+                        eventId,
+                        eventType,
+                        accepted = eventType != null,
+                        note = "Reviewed by the Android user."
+                    )
+                }
+                refreshAnalysis()
+            } catch (error: Exception) {
+                statusMessage = "Event review failed: ${error.message}"
+                busy = false
+            }
+        }
+    }
+
+
+    fun refreshAnalysis() {
+        val id = analysisId ?: return
+        scope.launch {
+            busy = true
+            statusMessage = "Refreshing analysis..."
+            try {
+                val response = withContext(Dispatchers.IO) { api().getAnalysis(id) }
+                analysisStatus = response.optString("status", "unknown")
+                analysisProgress = response.optInt("progress_pct", 0)
+                analysisSummary = response.optJSONObject("summary")
+                if (analysisStatus == "completed") {
+                    val eventResponse = withContext(Dispatchers.IO) { api().getAnalysisEvents(id) }
+                    eventCandidates.clear()
+                    val array = eventResponse.optJSONArray("events") ?: JSONArray()
+                    for (index in 0 until array.length()) {
+                        array.optJSONObject(index)?.let(eventCandidates::add)
+                    }
+                    statusMessage = "Analysis complete. Review event candidates before using event metrics."
+                } else if (analysisStatus == "failed") {
+                    statusMessage = "Analysis failed: ${response.optString("error", "Unknown error")}"
+                } else {
+                    statusMessage = "Analysis ${analysisStatus.lowercase()} · $analysisProgress%"
+                }
+            } catch (error: Exception) {
+                statusMessage = "Analysis refresh failed: ${error.message}"
+            } finally {
+                busy = false
+            }
+        }
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -213,6 +296,9 @@ private fun TennisVideoApp() {
                                                 api().uploadVideo(uri)
                                             }
                                             videoId = response.getString("video_id")
+                                            analysisId = null
+                                            analysisSummary = null
+                                            eventCandidates.clear()
                                             calibrationId = null
                                             calibrationPoints.clear()
                                             selectedPlayerPoint = null
@@ -318,6 +404,48 @@ private fun TennisVideoApp() {
                                 color = Muted,
                                 fontSize = 12.sp
                             )
+                            OutlinedButton(
+                                onClick = {
+                                    val id = videoId
+                                    val timestamp = timestampText.toDoubleOrNull()
+                                    if (id != null && timestamp != null && timestamp >= 0) {
+                                        scope.launch {
+                                            busy = true
+                                            statusMessage = "Suggesting court corners..."
+                                            try {
+                                                val response = withContext(Dispatchers.IO) {
+                                                    api().detectCourt(id, timestamp)
+                                                }
+                                                val candidate = response.optJSONObject("candidate")
+                                                val points = candidate?.optJSONArray("image_points")
+                                                if (points != null && points.length() == 4) {
+                                                    calibrationPoints.clear()
+                                                    for (index in 0 until points.length()) {
+                                                        val point = points.optJSONArray(index)
+                                                        if (point != null && point.length() == 2) {
+                                                            calibrationPoints.add(
+                                                                point.optDouble(0).toFloat() to
+                                                                    point.optDouble(1).toFloat()
+                                                            )
+                                                        }
+                                                    }
+                                                    statusMessage = "Court suggestion loaded. Verify the corner order visually before saving."
+                                                } else {
+                                                    statusMessage = "No court candidate found. Select the four corners manually."
+                                                }
+                                            } catch (error: Exception) {
+                                                statusMessage = "Court detection failed: ${error.message}"
+                                            } finally {
+                                                busy = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !busy && frameBitmap != null,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Suggest court corners automatically")
+                            }
                             FrameTapPreview(
                                 bitmap = bitmap,
                                 onTap = { point ->
