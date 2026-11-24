@@ -48,6 +48,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -132,9 +133,11 @@ private fun LocalTennisVideoApp() {
     var markEventLocation by remember { mutableStateOf(false) }
     var manualEventType by remember { mutableStateOf("serve") }
     var manualEventNote by remember { mutableStateOf("") }
+    var matchAnalytics by remember { mutableStateOf<TennisMatchAnalytics?>(null) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var showVideoPlayback by remember { mutableStateOf(false) }
     val courtCorners = remember { mutableStateListOf<Pair<Float, Float>>() }
+    val candidateTypeDrafts = remember { mutableStateMapOf<String, String>() }
 
     suspend fun refreshProjectLibrary() {
         val result = withContext(Dispatchers.IO) {
@@ -376,7 +379,7 @@ private fun LocalTennisVideoApp() {
             val id = projectId
             if (uri != null && id != null) scope.launch {
                 try {
-                    val data = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+                    val data = withContext(Dispatchers.IO) { LocalProjectStore.loadReportSnapshot(context, id) }
                         ?: error("Project was not found")
                     val svg = withContext(Dispatchers.Default) { LocalReportRenderer.renderSvg(data) }
                     withContext(Dispatchers.IO) {
@@ -397,7 +400,7 @@ private fun LocalTennisVideoApp() {
             val id = projectId
             if (uri != null && id != null) scope.launch {
                 try {
-                    val data = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+                    val data = withContext(Dispatchers.IO) { LocalProjectStore.loadReportSnapshot(context, id) }
                         ?: error("Project was not found")
                     val bytes = withContext(Dispatchers.Default) { LocalReportRenderer.renderPng(data) }
                     withContext(Dispatchers.IO) {
@@ -418,7 +421,7 @@ private fun LocalTennisVideoApp() {
             val id = projectId
             if (uri != null && id != null) scope.launch {
                 try {
-                    val data = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+                    val data = withContext(Dispatchers.IO) { LocalProjectStore.loadReportSnapshot(context, id) }
                         ?: error("Project was not found")
                     val bytes = withContext(Dispatchers.Default) { LocalReportRenderer.renderPdf(data) }
                     withContext(Dispatchers.IO) {
@@ -487,6 +490,17 @@ private fun LocalTennisVideoApp() {
         .mapNotNull { sampleArray.optJSONObject(it) }
         .minByOrNull { abs(it.optLong("timestamp_ms") - frameTimestampMs) }
         ?.takeIf { abs(it.optLong("timestamp_ms") - frameTimestampMs) <= 700L }
+
+    LaunchedEffect(projectId, sampleCount, eventCount) {
+        val id = projectId
+        if (id == null || sampleCount == 0 && eventCount == 0) {
+            matchAnalytics = null
+        } else {
+            matchAnalytics = withContext(Dispatchers.IO) {
+                LocalProjectStore.calculateAnalytics(context, id)
+            }
+        }
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Page) {
         Column(
@@ -808,7 +822,9 @@ private fun LocalTennisVideoApp() {
                                                                         timestamp,
                                                                         manualEventType.trim(),
                                                                         manualEventNote.trim(),
-                                                                        measurement
+                                                                        measurement,
+                                                                        imageX = x,
+                                                                        imageY = y
                                                                     )
                                                                 }
                                                             }
@@ -1140,6 +1156,12 @@ private fun LocalTennisVideoApp() {
                             fontSize = 12.sp
                         )
                         CourtMiniMap(players = latestPlayers, samples = sampleArray)
+                        Text(
+                            "The mini-court shows the most recent sample window. The match metrics below use the saved full timeline and accepted event annotations.",
+                            color = AppMuted,
+                            fontSize = 11.sp
+                        )
+                        matchAnalytics?.let { MatchAnalyticsCard(it) }
                         for (index in 0 until latestPlayers.length()) {
                             val player = latestPlayers.optJSONObject(index) ?: continue
                             if (!player.has("court_x_m")) continue
@@ -1166,7 +1188,7 @@ private fun LocalTennisVideoApp() {
                         fontSize = 12.sp
                     )
                     Text(
-                        "Edit the event-type field below before accepting a candidate to relabel it. The app saves the corrected label as user-reviewed.",
+                        "Each candidate has its own label editor. Accept only after checking the source frame; accepted labels are user-reviewed annotations, not model-confirmed ground truth.",
                         color = AppMuted,
                         fontSize = 11.sp
                     )
@@ -1190,6 +1212,20 @@ private fun LocalTennisVideoApp() {
                                 fontSize = 11.sp
                             )
                             Text(event.optString("note"), color = AppMuted, fontSize = 11.sp)
+                            if (eventStatus == "needs_review") {
+                                var candidateType by remember(eventId) {
+                                    mutableStateOf(event.optString("event_type"))
+                                }
+                                OutlinedTextField(
+                                    value = candidateType,
+                                    onValueChange = { candidateType = it },
+                                    label = { Text("Event label for this candidate") },
+                                    supportingText = { Text("Examples: serve, return, forehand, backhand, volley, bounce, point_start, point_end.") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+                                candidateTypeDrafts[eventId] = candidateType
+                            }
                             OutlinedButton(
                                 onClick = {
                                     val item = project
@@ -1231,7 +1267,14 @@ private fun LocalTennisVideoApp() {
                                             val id = projectId
                                             if (id != null) scope.launch {
                                                 withContext(Dispatchers.IO) {
-                                                    LocalProjectStore.reviewEvent(context, id, eventId, true, manualEventType.trim())
+                                                    LocalProjectStore.reviewEvent(
+                                                        context,
+                                                        id,
+                                                        eventId,
+                                                        true,
+                                                        candidateTypeDrafts[eventId]?.trim()?.takeIf { it.isNotBlank() }
+                                                            ?: event.optString("event_type")
+                                                    )
                                                     LocalProjectStore.load(context, id)
                                                 }.also { project = it }
                                                 message = "Candidate accepted as a reviewed event. Verify its type before using the metric."
@@ -1464,6 +1507,92 @@ private fun VideoPlaybackCard(
             modifier = Modifier.weight(1f)
         ) {
             Text("Use paused time")
+        }
+    }
+}
+
+@Composable
+private fun MatchAnalyticsCard(analytics: TennisMatchAnalytics) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF7FAFD))
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("5 · Match metrics and placement", fontWeight = FontWeight.Bold, color = AppInk)
+            Text(
+                "Location bins use only accepted, manually reviewed event markers. Player movement and baseline summaries use sampled pose estimates; P1/P2 identities may swap at camera cuts, crossovers or occlusions.",
+                color = AppMuted,
+                fontSize = 11.sp
+            )
+            Text(
+                "Player positioning (calibrated observations: " + analytics.calibratedPlayerObservations + ")",
+                color = AppInk,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp
+            )
+            if (analytics.players.isEmpty()) {
+                Text("No calibrated player-position samples yet. Confirm the four court corners, then run analysis.", color = AppMuted, fontSize = 12.sp)
+            } else {
+                analytics.players.forEach { player ->
+                    Text(
+                        player.playerId + " · " + player.observations + " observations · " +
+                            String.format(Locale.US, "%.1f%% behind baseline", player.behindBaselinePercent) +
+                            " · mean signed baseline distance " +
+                            String.format(Locale.US, "%+.2f m", player.averageSignedBaselineDistanceMeters) +
+                            " · sampled path " +
+                            String.format(Locale.US, "%.1f m", player.sampledMovementMeters),
+                        color = AppInk,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+            HorizontalDivider(color = Color(0xFFDCE4EB))
+            Text("Serve placement · accepted serve locations: " + analytics.serveZones.total, color = AppInk, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(
+                "T " + (analytics.serveZones.counts["T"] ?: 0) +
+                    " · Body " + (analytics.serveZones.counts["Body"] ?: 0) +
+                    " · Wide " + (analytics.serveZones.counts["Wide"] ?: 0) +
+                    " · Outside service box " + (analytics.serveZones.counts["Outside service box"] ?: 0),
+                color = AppInk,
+                fontSize = 12.sp
+            )
+            HorizontalDivider(color = Color(0xFFDCE4EB))
+            Text("Shot placement · accepted shot/contact locations: " + analytics.shotDepths.total, color = AppInk, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(
+                "Depth: short " + (analytics.shotDepths.counts["Short"] ?: 0) +
+                    " · mid-court " + (analytics.shotDepths.counts["Mid-court"] ?: 0) +
+                    " · deep " + (analytics.shotDepths.counts["Deep"] ?: 0),
+                color = AppInk,
+                fontSize = 12.sp
+            )
+            Text(
+                "Court direction (image/court x-axis): left " + (analytics.shotDirections.counts["Left"] ?: 0) +
+                    " · centre " + (analytics.shotDirections.counts["Centre"] ?: 0) +
+                    " · right " + (analytics.shotDirections.counts["Right"] ?: 0),
+                color = AppInk,
+                fontSize = 12.sp
+            )
+            HorizontalDivider(color = Color(0xFFDCE4EB))
+            Text("Reviewed rallies", color = AppInk, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(
+                analytics.rallies.completedRallies.toString() + " complete start/end pairs · " +
+                    analytics.rallies.ralliesWithStrokeLabels + " with reviewed stroke labels",
+                color = AppInk,
+                fontSize = 12.sp
+            )
+            Text(
+                "Average duration " + String.format(Locale.US, "%.1f s", analytics.rallies.averageDurationSeconds) +
+                    " · average reviewed strokes " + String.format(Locale.US, "%.1f", analytics.rallies.averageReviewedStrokes),
+                color = AppInk,
+                fontSize = 12.sp
+            )
+            Text(
+                "Event coverage: " + analytics.acceptedEvents + " accepted labels · " +
+                    analytics.acceptedLocatedEvents + " with court coordinates · " +
+                    analytics.pendingCandidates + " still awaiting review. No unreviewed candidates are counted in these placement metrics.",
+                color = AppMuted,
+                fontSize = 11.sp
+            )
         }
     }
 }
