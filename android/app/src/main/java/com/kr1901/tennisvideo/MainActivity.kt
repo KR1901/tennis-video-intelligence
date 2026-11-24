@@ -117,6 +117,8 @@ private fun LocalTennisVideoApp() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var project by remember { mutableStateOf<JSONObject?>(null) }
+    val recentProjects = remember { mutableStateListOf<JSONObject>() }
+    var localStorageBytes by remember { mutableStateOf(0L) }
     var frameBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Choose a match video stored on this device to begin.") }
@@ -134,6 +136,15 @@ private fun LocalTennisVideoApp() {
     var showVideoPlayback by remember { mutableStateOf(false) }
     val courtCorners = remember { mutableStateListOf<Pair<Float, Float>>() }
 
+    suspend fun refreshProjectLibrary() {
+        val result = withContext(Dispatchers.IO) {
+            LocalProjectStore.listProjects(context) to LocalProjectStore.storageUsageBytes(context)
+        }
+        recentProjects.clear()
+        recentProjects.addAll(result.first)
+        localStorageBytes = result.second
+    }
+
     suspend fun restoreProject(id: String) {
         val saved = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
         project = saved
@@ -143,6 +154,8 @@ private fun LocalTennisVideoApp() {
                 LocalVideoInspector.frameAt(context, uri, 0L)
             }
             frameTimestampMs = 0L
+            timestampText = "0"
+            showVideoPlayback = false
             markPlayerPosition = false
             markEventLocation = false
             courtCorners.clear()
@@ -151,10 +164,15 @@ private fun LocalTennisVideoApp() {
                 val point = storedCorners.optJSONObject(index) ?: continue
                 courtCorners.add(point.optDouble("x").toFloat() to point.optDouble("y").toFloat())
             }
+        } else {
+            frameBitmap = null
+            courtCorners.clear()
         }
+        refreshProjectLibrary()
     }
 
     LaunchedEffect(Unit) {
+        refreshProjectLibrary()
         val preferences = context.getSharedPreferences("tvi_local_projects", Context.MODE_PRIVATE)
         val lastId = preferences.getString("last_project_id", null)
         if (!lastId.isNullOrBlank()) restoreProject(lastId)
@@ -598,6 +616,71 @@ private fun LocalTennisVideoApp() {
                             color = AppMuted,
                             fontSize = 12.sp
                         )
+                    }
+                }
+            }
+
+            if (recentProjects.isNotEmpty()) {
+                Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Recent local projects", fontWeight = FontWeight.Bold, color = AppInk)
+                        Text(
+                            recentProjects.size.toString() + " saved project(s) · " + formatBytes(localStorageBytes) + " app storage used",
+                            color = AppMuted,
+                            fontSize = 12.sp
+                        )
+                        for (item in recentProjects.take(8)) {
+                            val itemId = item.optString("id")
+                            val isSelected = itemId == projectId
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        item.optString("display_name", "Match video"),
+                                        color = AppInk,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 13.sp,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        formatDuration(item.optLong("duration_ms")) +
+                                            " · " + item.optString("analysis_status", "not started").replace('_', ' ') +
+                                            " · " + formatBytes(item.optLong("size_bytes")),
+                                        color = AppMuted,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                if (isSelected) {
+                                    Text("Open", color = TennisGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                } else {
+                                    OutlinedButton(
+                                        onClick = {
+                                            scope.launch {
+                                                busy = true
+                                                try {
+                                                    restoreProject(itemId)
+                                                    message = "Opened local project: " + item.optString("display_name")
+                                                } catch (error: Exception) {
+                                                    message = "Could not open project: " + (error.message ?: "unknown error")
+                                                } finally {
+                                                    busy = false
+                                                }
+                                            }
+                                        },
+                                        enabled = !busy
+                                    ) { Text("Open") }
+                                }
+                            }
+                        }
+                        if (recentProjects.size > 8) {
+                            Text(
+                                "Showing the eight most recently updated projects.",
+                                color = AppMuted,
+                                fontSize = 11.sp
+                            )
+                        }
                     }
                 }
             }
@@ -1237,6 +1320,7 @@ private fun LocalTennisVideoApp() {
                                         project = null
                                         frameBitmap = null
                                         courtCorners.clear()
+                                        refreshProjectLibrary()
                                         markPlayerPosition = false
                                         markEventLocation = false
                                         message = "Local project data and downloaded copy deleted. Original selected videos remain untouched."
