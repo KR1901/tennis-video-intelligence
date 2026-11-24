@@ -3,6 +3,11 @@ package com.kr1901.tennisvideo.upload
 import android.content.Context
 import android.net.Uri
 
+object BackgroundUploadRuntimeState {
+    @Volatile
+    var userInitiatedJobRunning: Boolean = false
+}
+
 object UploadRuntimeStore {
     private const val CONNECTION_PREFS = "tvi_connection"
     private const val RUNTIME_PREFS = "tvi_upload_runtime"
