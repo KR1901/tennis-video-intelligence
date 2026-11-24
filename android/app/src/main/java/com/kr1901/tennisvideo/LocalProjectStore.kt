@@ -158,14 +158,99 @@ internal object LocalProjectStore {
 
     @Synchronized
     fun setCourtCorners(context: Context, id: String, points: List<Pair<Float, Float>>) {
-        update(context, id) { project ->
-            val corners = JSONArray()
-            points.take(4).forEach { point ->
-                corners.put(JSONObject().put("x", point.first).put("y", point.second))
-            }
-            project.put("court_corners", corners)
-            if (points.isEmpty()) project.put("manual_positions", JSONArray())
+        val project = load(context, id) ?: return
+        val corners = JSONArray()
+        points.take(4).forEach { point ->
+            corners.put(JSONObject().put("x", point.first).put("y", point.second))
         }
+        project.put("court_corners", corners)
+        if (points.isEmpty()) project.put("manual_positions", JSONArray())
+
+        val validCorners = points.takeIf { it.size == 4 }
+        if (validCorners != null || points.isEmpty()) {
+            val log = sampleLogFile(context, id)
+            if (log.isFile) {
+                val temporary = File(directory(context), id + ".samples.ndjson.tmp")
+                temporary.bufferedWriter().use { writer ->
+                    log.forEachLine { line ->
+                        val sample = runCatching { JSONObject(line) }.getOrNull()
+                        if (sample != null) {
+                            applyCourtCalibration(sample, validCorners)
+                            writer.append(sample.toString()).append('\\n')
+                        } else {
+                            writer.append(line).append('\\n')
+                        }
+                    }
+                }
+                if (!temporary.renameTo(log)) {
+                    log.delete()
+                    if (!temporary.renameTo(log)) {
+                        temporary.delete()
+                        error("Could not save the recalibrated sample timeline.")
+                    }
+                }
+            }
+            val samples = project.optJSONArray("samples") ?: JSONArray()
+            for (index in 0 until samples.length()) {
+                val sample = samples.optJSONObject(index) ?: continue
+                applyCourtCalibration(sample, validCorners)
+            }
+            project.put("samples", samples)
+        }
+        save(context, project)
+    }
+
+    private fun applyCourtCalibration(
+        sample: JSONObject,
+        corners: List<Pair<Float, Float>>?
+    ) {
+        val players = sample.optJSONArray("players") ?: JSONArray()
+        for (index in 0 until players.length()) {
+            val player = players.optJSONObject(index) ?: continue
+            val measurement = if (corners != null &&
+                player.has("foot_x") && player.has("foot_y")
+            ) {
+                CourtProjector.project(
+                    corners,
+                    player.optDouble("foot_x").toFloat(),
+                    player.optDouble("foot_y").toFloat()
+                )
+            } else {
+                null
+            }
+            applyMeasurement(player, measurement)
+        }
+
+        val ball = sample.optJSONObject("ball")
+        if (ball != null) {
+            val measurement = if (corners != null && ball.optBoolean("detected", false)) {
+                CourtProjector.project(
+                    corners,
+                    ball.optDouble("x").toFloat(),
+                    ball.optDouble("y").toFloat()
+                )
+            } else {
+                null
+            }
+            applyMeasurement(ball, measurement)
+        }
+    }
+
+    private fun applyMeasurement(
+        target: JSONObject,
+        measurement: CourtPositionMeasurement?
+    ) {
+        if (measurement == null) {
+            target.remove("court_x_m")
+            target.remove("court_y_m")
+            target.remove("player_end")
+            target.remove("baseline_distance_m")
+            return
+        }
+        target.put("court_x_m", measurement.xMeters)
+            .put("court_y_m", measurement.yMeters)
+            .put("player_end", measurement.playerEnd)
+            .put("baseline_distance_m", measurement.baselineDistanceMeters)
     }
 
     @Synchronized
