@@ -16,9 +16,10 @@ from pathlib import Path
 
 
 POSE_MODEL_URL = (
-    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-    "pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+    "https://huggingface.co/litert-community/MediaPipe-PoseLandmarker-Lite/"
+    "resolve/main/pose_landmarker_lite.task"
 )
+POSE_MODEL_SHA256 = "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a"
 TRACKNET_WEIGHTS_URL = (
     "https://huggingface.co/vishnushenoy09/tracknet-v1-tennis/"
     "resolve/main/tracknet_weights.pth?download=true"
