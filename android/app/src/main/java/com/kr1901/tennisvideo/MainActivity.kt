@@ -530,7 +530,7 @@ private fun TennisVideoApp() {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             onClick = { videoPicker.launch(arrayOf("video/*")) },
-                            enabled = !busy,
+                            enabled = !busy && uploadStatus !in listOf("QUEUED", "UPLOADING"),
                             modifier = Modifier.weight(1f)
                         ) {
                             Text("Choose video")
