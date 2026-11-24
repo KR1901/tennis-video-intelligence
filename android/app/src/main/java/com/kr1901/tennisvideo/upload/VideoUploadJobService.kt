@@ -8,13 +8,13 @@ import android.os.PersistableBundle
 import com.kr1901.tennisvideo.data.VideoApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
@@ -37,7 +37,7 @@ class VideoUploadJobService : JobService() {
         }
 
         val totalBytes = extras.getLong(KEY_TOTAL_BYTES, 0L)
-        val job = serviceScope.launch {
+        val job = serviceScope.launch(start = CoroutineStart.LAZY) {
             val workerJob = coroutineContext[Job]
             try {
                 setNotification(
@@ -88,6 +88,7 @@ class VideoUploadJobService : JobService() {
             }
         }
         runningJobs[params.jobId] = job
+        job.start()
         return true
     }
 
