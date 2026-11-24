@@ -69,9 +69,11 @@ A backend image definition is provided at `backend/Dockerfile`. Build and run it
 
 ```bash
 docker build -t tennis-video-intelligence-api ./backend
+export TVI_API_TOKEN="$(openssl rand -hex 32)"
+printf 'Save this token securely and enter it in the Android app: %s\n' "$TVI_API_TOKEN"
 docker run --name tvi-api --restart unless-stopped \
   -p 8000:8000 \
-  -e TVI_API_TOKEN="$(openssl rand -hex 32)" \
+  -e TVI_API_TOKEN="$TVI_API_TOKEN" \
   -v tvi-video-data:/data \
   tennis-video-intelligence-api
 ```
