@@ -465,6 +465,12 @@ private fun LocalTennisVideoApp() {
     val reviewableEventCount = (0 until eventCount).count {
         eventArray.optJSONObject(it)?.optString("review_status") == "needs_review"
     }
+    val eventRevision = (0 until eventCount).joinToString("|") { index ->
+        val event = eventArray.optJSONObject(index)
+        event?.optString("event_id").orEmpty() + ":" +
+            event?.optString("event_type").orEmpty() + ":" +
+            event?.optString("review_status").orEmpty()
+    }
     val latestManualPosition = if (manualPositionCount > 0) {
         manualPositionArray.optJSONObject(manualPositionCount - 1)
     } else {
@@ -510,7 +516,7 @@ private fun LocalTennisVideoApp() {
         .minByOrNull { abs(it.optLong("timestamp_ms") - frameTimestampMs) }
         ?.takeIf { abs(it.optLong("timestamp_ms") - frameTimestampMs) <= 700L }
 
-    LaunchedEffect(projectId, sampleCount, eventCount) {
+    LaunchedEffect(projectId, sampleCount, eventRevision) {
         val id = projectId
         if (id == null || sampleCount == 0 && eventCount == 0) {
             matchAnalytics = null
