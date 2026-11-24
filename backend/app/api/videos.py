@@ -195,7 +195,10 @@ async def create_court_calibration(
     if isinstance(media_info, dict):
         duration = media_info.get("duration_seconds")
         if duration is not None and request.frame_timestamp_seconds > float(duration):
-            raise HTTPException(status_code=422, detail="Calibration timestamp is beyond the video duration.")
+            raise HTTPException(
+                status_code=422,
+                detail="Calibration timestamp is beyond the video duration.",
+            )
 
     court = CourtDimensions()
     court_points = court.boundary_corners(request.court_area)
