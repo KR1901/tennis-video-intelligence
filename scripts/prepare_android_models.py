@@ -201,9 +201,13 @@ def main() -> None:
     pose_path = args.output / POSE_MODEL_NAME
     tracknet_path = args.output / TRACKNET_MODEL_NAME
     pose_info = download(POSE_MODEL_URL, pose_path, 1_000_000, 30_000_000)
-    with pose_path.open("rb") as model_file:
-        if model_file.read(4) != b"PK\x03\x04":
-            raise RuntimeError("The Pose Landmarker asset is not a valid task bundle")
+    if pose_info["sha256"] != POSE_MODEL_SHA256:
+        raise RuntimeError(
+            "Pose Landmarker checksum mismatch: expected "
+            + POSE_MODEL_SHA256
+            + ", got "
+            + str(pose_info["sha256"])
+        )
 
     weights_path = args.output / "tracknet_weights.pth"
     tracknet_info = download(TRACKNET_WEIGHTS_URL, weights_path, 1_000_000, 250_000_000)
