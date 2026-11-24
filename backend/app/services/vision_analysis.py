@@ -154,8 +154,7 @@ def detect_players(frame: np.ndarray) -> list[dict[str, Any]]:
 
     candidates.sort(
         key=lambda item: (
-            item["confidence"] * 0.65
-            + min(1.0, item["bbox"][3] / max(1.0, frame.shape[0])) * 0.35
+            item["confidence"] * 0.65 + min(1.0, item["bbox"][3] / max(1.0, frame.shape[0])) * 0.35
         ),
         reverse=True,
     )
@@ -244,11 +243,14 @@ def _load_manual_homography(
 def _inside_polygon(point: tuple[float, float], polygon: np.ndarray | None) -> bool:
     if polygon is None:
         return True
-    return cv2.pointPolygonTest(
-        np.asarray(polygon, dtype=np.float32),
-        (float(point[0]), float(point[1])),
-        False,
-    ) >= 0
+    return (
+        cv2.pointPolygonTest(
+            np.asarray(polygon, dtype=np.float32),
+            (float(point[0]), float(point[1])),
+            False,
+        )
+        >= 0
+    )
 
 
 def _make_player_summary(
@@ -673,7 +675,8 @@ def calculate_reviewed_match_metrics(job: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(events, list):
         events = []
     accepted = [
-        event for event in events
+        event
+        for event in events
         if isinstance(event, dict) and event.get("review_status") == "accepted"
     ]
     serves = [event for event in accepted if event.get("event_type") == "serve_bounce"]
@@ -697,10 +700,7 @@ def calculate_reviewed_match_metrics(job: dict[str, Any]) -> dict[str, Any]:
         end = next((value for value in point_ends if value > start), None)
         if end is not None:
             rally_lengths.append(
-                sum(
-                    start <= float(event["timestamp_seconds"]) <= end
-                    for event in contacts
-                )
+                sum(start <= float(event["timestamp_seconds"]) <= end for event in contacts)
             )
 
     def positions(items: list[dict[str, Any]]) -> list[dict[str, float]]:
