@@ -22,8 +22,8 @@ android {
         applicationId = "com.kr1901.tennisvideo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
     }
 
     signingConfigs {
@@ -38,6 +38,10 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            // Let the offline preview app be installed alongside an existing release.
+            applicationIdSuffix = ".debug"
+        }
         getByName("release") {
             isMinifyEnabled = false
             if (releaseSigningConfigured) {
@@ -49,6 +53,10 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    androidResources {
+        noCompress += listOf("task")
     }
 
     compileOptions {
@@ -75,6 +83,11 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
+    implementation("com.google.mediapipe:tasks-vision:1.2.3")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.32.0")
+
+    testImplementation("junit:junit:4.13.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

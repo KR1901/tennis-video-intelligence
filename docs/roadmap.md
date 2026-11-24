@@ -1,94 +1,74 @@
 # Roadmap and implementation status
 
-This roadmap distinguishes working prototype functions from production-ready capabilities. A checkbox marked **prototype** is implemented in code, but does not imply match-level accuracy or production infrastructure.
+Checked items mean that code paths exist in the current offline Android branch. They do not imply match-level accuracy. The legacy hosted backend is retained for research and is not required by the Android app.
 
-## Milestone 0 — repository and ingestion foundation
+## Milestone 0 — repository foundation
 
 - [x] Establish project scope, architecture and Apache-2.0 source licence.
-- [x] FastAPI health endpoint and API documentation.
-- [x] Chunked local video upload with extension, content-type and size checks.
-- [x] Backend tests and GitHub Actions CI.
-- [x] Android project and CI build workflow.
+- [x] Android Kotlin / Jetpack Compose project and GitHub Actions build.
+- [x] Legacy FastAPI prototype and backend CI suite.
 
-## Milestone 1 — media inspection and job lifecycle
+## Milestone 1 — media input and local job lifecycle
 
-- [x] Probe media metadata with FFmpeg / ffprobe.
-- [x] Persist local video metadata and inspection output.
-- [x] Extract a JPEG frame by timestamp for review.
-- [x] Persist manual court calibration and project image points into court coordinates.
-- [x] Create analysis jobs, progress state and result files using local JSON storage and FastAPI background tasks.
-- [ ] Replace local JSON storage with PostgreSQL / SQLite-backed repositories and migrations.
-- [ ] Replace in-process background tasks with a durable queue, retry policy and worker heartbeats.
-- [x] Add optional shared bearer-token protection and require it when the backend is set to production mode.
-- [ ] Add individual user authentication, authorisation, quotas and access-scoped media records.
-- [ ] Add private object storage, signed upload / playback links and retention/deletion controls.
-- [ ] Generate low-resolution proxy videos and representative frames.
+- [x] Select local videos through Android Storage Access Framework and retain read permission.
+- [x] Restore the last local project and inspect duration, dimensions, MIME type and file size.
+- [x] Enforce a 4,768 MiB input ceiling; reject local providers that do not expose a verifiable size.
+- [x] Add direct HTTPS video-file import with redirect validation, connected-network WorkManager, partial Range resume and streaming size enforcement.
+- [x] Preview decoded frames at selected timestamps.
+- [x] Run bounded, persistent WorkManager analysis chunks and record progress.
+- [x] Persist the full sample stream incrementally in NDJSON and retain a bounded recent UI window.
+- [x] Export the complete sample timeline as CSV.
+- [ ] Add instrumentation tests for SAF provider variations, HTTP Range resume, process death, reboot and interrupted-download cases.
+- [ ] Benchmark processing time, memory, battery and thermal load on mid-range devices.
+- [ ] Add project rename, delete, multi-project library and storage cleanup controls.
 
-## Milestone 2 — court and player positioning
+## Milestone 2 — court geometry and player positioning
 
-- [x] Homography estimation, image-to-court projection and signed baseline-distance utilities.
-- [x] Manual court-corner selection endpoint and Android tap UI.
-- [x] Heuristic green-region court-corner suggestion with explicit user confirmation.
-- [x] Generic OpenCV HOG person proposals and a bounding-box-bottom ground-point approximation.
-- [x] Court-plane projection when a manual calibration is supplied.
-- [x] Near-end / far-end baseline summaries and position-density heatmaps (prototype).
-- [ ] Tennis-specific court-keypoint model, multi-camera-segment detection and calibration confidence validation.
-- [ ] Robust player detector and multi-object identity tracker with occlusion / changeover handling.
-- [ ] Pose-based foot-contact estimation and validated ground-point error in metres.
-- [ ] Camera pan / zoom compensation and per-segment calibration.
-- [ ] Timestamp-linked mini-court replay and reviewed track correction.
+- [x] Save four manually tapped court corners and fit a projective homography to a standard doubles court.
+- [x] Suggest approximate corner bounds from a green-region colour mask, with explicit manual verification.
+- [x] Save manually tapped player ground points in court x/y metres and signed baseline distance.
+- [x] Run MediaPipe Pose Landmarker Lite on sampled frames and extract feet, wrists and bounding boxes.
+- [x] Associate up to two pose detections with temporary P1/P2 labels using nearest-foot-point continuity between chunks.
+- [x] Project pose foot points into court coordinates where calibration is present.
+- [ ] Train/validate a tennis-specific two-player detector and identity tracker.
+- [ ] Add trained court-line/keypoint detection, camera pan/zoom/cut detection and confidence-scored recalibration.
+- [ ] Validate foot-contact position error against manually labelled footage.
 
-## Milestone 3 — ball tracking and tennis events
+## Milestone 3 — ball and event understanding
 
-- [x] HSV tennis-ball-colour blob candidates (low-confidence visual proposals).
-- [x] Sparse ball-candidate trace and trajectory-direction-change candidates.
-- [x] Event review API and audit metadata for accept / reject / relabel.
-- [x] Manual event entry for serve, bounce, contact, point-boundary and tactical labels.
-- [ ] Tennis-trained ball detector and short-gap trajectory tracker.
-- [ ] Motion-aware candidate generation for racket contact, bounce and net crossing.
-- [ ] Validated serve, return and point-boundary models.
-- [x] Stream original video with HTTP byte ranges and play / seek it in the Android client during manual review.
-- [ ] Automatic point construction with missing-video and review-coverage accounting.
+- [x] Add the MIT TrackNet V1 tennis checkpoint export to ONNX and Android on-device heatmap inference.
+- [x] Sample TrackNet every 200 ms (5 fps) using three consecutive decoded frames and store candidate ball points.
+- [x] Project ball points into court coordinates when the user calibration is valid.
+- [x] Generate confidence-gated possible direction-change/contact/bounce candidates.
+- [x] Review, accept, reject and relabel event candidates.
+- [x] Add manual timestamped event entry and manually tapped serve/shot location in court metres.
+- [ ] Implement validated long-gap ball tracking, occlusion recovery and camera-segment handling.
+- [ ] Train/validate serve, bounce, racket-contact and point-boundary classifiers.
+- [ ] Add an annotated match set with precision, recall, false-positive and review-coverage reporting.
+- [ ] Increase/adapt sampling around high-speed contacts after device performance benchmarking.
 
-## Milestone 4 — shot and tactical analytics
+## Milestone 4 — tactical analytics and infographic studio
 
-- [x] Calculate serve and shot landing positions from explicitly reviewed events (prototype).
-- [x] Calculate rally contact counts when point-start, point-end and contact labels are reviewed.
-- [x] Calculate manually reviewed winners, forced errors, unforced errors, serve +1 and return +1 counts.
-- [x] Include event provenance and review state in persisted results.
-- [x] Human-entered first-serve / second-serve labels, serve outcomes and coarse T/body/wide location summaries (prototype).
-- [x] Human-entered shot direction and coarse coordinate-derived short / mid-court / deep placement summaries (prototype; no automatic landing classifier).
-- [x] Pair reviewed point-start / point-end markers into non-overlapping rally sequences and count reviewed contacts.
-- [x] Aggregate manually reviewed winners, errors, serve +1 and return +1 by near / far labels.
-- [ ] Validate point outcomes and player identity across changeovers.
-- [ ] Match / player comparison filters and confidence-aware ranking.
-- [ ] Benchmark every metric against human-labelled held-out matches.
+- [x] Mini-court with recent P1/P2 movement trails, density dots and ball candidate locations.
+- [x] Court infographic export as SVG, PNG and PDF.
+- [x] Export candidate/reviewed event records and calibrated manual positions as CSV.
+- [ ] Produce validated serve placement (T/body/wide) and return position by serve type.
+- [ ] Produce validated shot landing/depth maps and rally-length statistics.
+- [ ] Derive winners, forced/unforced errors, serve +1 and return +1 only from verified event sequences.
+- [ ] Add player comparison filters, set/point selection, time-linked replay and performance summaries.
+- [ ] Benchmark all automated metrics against human-annotated held-out matches before presenting them as reliable.
 
-## Milestone 5 — Android client and infographic studio
+## Accuracy boundaries
 
-- [x] Kotlin / Jetpack Compose video picker, upload and media-inspection screens.
-- [x] Frame preview, manual corner taps and visible calibration markers.
-- [x] Analysis start / refresh, player-position summaries and heatmaps.
-- [x] Candidate-event review, manual event entry and SVG report export.
-- [x] Native Android video playback with server-side byte-range seek support.
-- [ ] Interactive mini-court with track / ball timelines and player comparison.
-- [x] Export one-page PNG and PDF positioning / reviewed-event reports in addition to SVG.
-- [x] Delete a video and associated local analysis files from the Android client.
-- [ ] Add configurable retention schedules and per-user deletion auditing.
-- [ ] Production API authentication and HTTPS-only backend deployment.
+- MediaPipe pose is generic; it is not trained to identify the two tennis players. P1/P2 are short-term spatial labels and may swap after occlusions, ends changes, camera cuts or large movement.
+- TrackNet V1 produces candidate tennis-ball positions on a 5 fps grid. This is not a validated continuous track and can miss high-speed/occluded ball motion.
+- Green-region suggestions are approximate color bounds, not line detection. Court metres require correct four-corner calibration and a stable camera.
+- Event candidates are trajectory heuristics. They are review aids, not official serves, contacts, winners, errors or bounce statistics.
+- Manual event labels/coordinates are distinct from model-derived observations and must retain that provenance.
+- WorkManager persists pending work but Android controls scheduling. Force-stop halts automatic restart until the app is reopened.
+- Direct URL input supports only authorised direct HTTPS video files, not watch pages, playlists, DRM or subscription streams.
+- User-selected source videos remain at their original location. Direct-link downloads and generated project data are private to the app and are removed on uninstall.
 
-## Production-readiness blockers
+## Legacy backend research
 
-- The analysis worker currently uses FastAPI in-process background tasks and local JSON/files; it is a single-instance development implementation, not a durable distributed service.
-- Court detection is a green-region heuristic and asks for user confirmation. Automatic orientation and camera-segment calibration are not solved.
-- Player proposals use OpenCV's generic HOG pedestrian detector. They are not tennis-trained, their identities are not reliably tracked, and the bottom of a bounding box is only an approximate ground point.
-- Ball proposals use colour / compact-blob filtering at sampled frames. They are not validated ball tracks and do not establish contacts or bounces.
-- Event-derived statistics are counted only after a user explicitly confirms an event type. Unreviewed candidates must not be treated as official statistics.
-- The Android release workflow builds an unsigned APK unless the owner configures a stable keystore in GitHub Actions secrets. This repository has no hosted production backend; the release client must be configured with an HTTPS API URL and the bearer token if enabled.
-
-## Out of scope until validated
-
-- Exact spin measurement from ordinary single-camera broadcast video.
-- Radar-grade serve speed claims from one camera.
-- Guaranteed downloading of arbitrary YouTube, broadcast or subscription-streaming URLs.
-- Automatic winner / error classification from colour blobs or generic person detection.
+The FastAPI ingestion and OpenCV prototype remains available for algorithm comparison. It is not deployed by GitHub and is not on the primary Android product path.

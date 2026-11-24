@@ -1,6 +1,6 @@
 # Android application
 
-Native Android prototype built with Kotlin and Jetpack Compose. It connects to the FastAPI backend for video upload, media inspection, court calibration, candidate analysis, human event review, native video playback, deletion and SVG / PNG / PDF reporting.
+The Android client is an offline-first tennis video analysis workspace. It can open a video already on your device or import a direct, authorised HTTPS video-file link. The downloaded or selected video is processed on the phone; the app does not need a hosted backend, API URL or bearer token.
 
 ## Requirements
 
@@ -8,77 +8,108 @@ Native Android prototype built with Kotlin and Jetpack Compose. It connects to t
 - JDK 17.
 - Android SDK Platform 36 and Build Tools 36.0.0.
 - Gradle 9.6.0.
-- An accessible backend with FFmpeg and ffprobe installed.
+- An internet connection during build/CI to retrieve the open-source model assets and Gradle dependencies.
+- On-device internet access only when using direct HTTPS link import.
 
-The project uses AGP 9.5.0 with its built-in Kotlin support, Kotlin Compose compiler plugin 2.4.10, Compose BOM 2026.06.01, Gradle 9.6.0 and Java 17.
+The project uses AGP 9.5.0, Kotlin Compose compiler plugin 2.4.10, Compose BOM 2026.06.01, WorkManager 2.12.0, MediaPipe Tasks Vision 1.2.3, ONNX Runtime Android 1.32.0, Gradle 9.6.0 and Java 17.
 
-## Open and build
+## Build
 
 Open the `android/` directory in Android Studio and sync Gradle. The debug APK is produced at:
 
 `app/build/outputs/apk/debug/app-debug.apk`
 
-The release variant is produced at:
+The release APK is produced at:
 
 `app/build/outputs/apk/release/app-release.apk`
 
-or `app-release-unsigned.apk` if a release keystore is not configured. See the signing section below.
+or `app-release-unsigned.apk` if no release keystore is configured. See the signing section below.
 
-A Gradle wrapper properties file is included; if the wrapper scripts are absent in your checkout, generate them once from this directory:
+GitHub Actions downloads and verifies the MediaPipe Pose Landmarker model, downloads the MIT TrackNet V1 tennis checkpoint and converts it to ONNX before assembling the APK. The binary model assets are generated during the build rather than stored in Git. CI runs unit tests before assembling the debug APK.
 
-```bash
-gradle wrapper --gradle-version 9.6.0
-```
+## Input options
 
-GitHub Actions builds the debug APK and the release APK. The release workflow uploads either a signed or explicitly unsigned artifact.
+### Video already on the phone
 
-## Connect to the backend
+1. Tap **Choose video from this device** and select a video through Android's document picker.
+2. The app reads metadata and frames directly from the selected content URI. It does not upload or copy the source video.
+3. The local processing ceiling is 4,768 MiB (just under 5 GB). The provider must report a verifiable file size; files with unknown sizes are rejected so the limit can be enforced.
 
-Debug builds prefill `http://10.0.2.2:8000`, which reaches the host machine from the standard Android emulator. On a physical phone during local development, change it to the development computer's LAN IP and keep both devices on the same network. The production build deliberately starts with an empty URL and accepts HTTPS only. It must be pointed at a separately deployed HTTPS backend; `10.0.2.2` is not a phone or public-server address.
+### Direct video-file link
 
-Start the backend from `backend/`:
+1. Paste a direct HTTPS URL that returns an actual video file, such as an MP4 or MOV.
+2. Tap **Download direct video link**. The app schedules a connected-network WorkManager job and shows download progress.
+3. Interrupted downloads are resumed from the saved byte offset when the origin supports HTTP Range. The same 4,768 MiB limit is enforced while streaming.
+4. The downloaded file is stored in the app's private files and then opened as a local project. No video is sent to our backend.
 
-```bash
-python -m pip install -e ".[dev]"
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
+This path requires internet access and the Android INTERNET permission. It deliberately does **not** scrape YouTube/watch pages, playlists, HLS/DASH manifests, DRM or subscription streams, or bypass provider access controls. Only use direct links you are authorised to download. A website page URL is not a direct media file URL.
 
-Install FFmpeg so both `ffmpeg` and `ffprobe` are available on the backend PATH. Do not expose this unauthenticated development server to the public internet. Cleartext HTTP is enabled only in the debug manifest; release builds explicitly disallow it.
+## Calibrate the court
 
-## Current app flow
+1. Preview a frame at a known timestamp.
+2. Optionally tap **Suggest court corners from green region**. This is a rough colour-segmentation suggestion, not court-line recognition. Verify or clear it.
+3. If needed, tap the four outer court corners in this order: far-left, far-right, near-right, near-left.
+4. The app fits a four-point homography to a standard doubles court measuring 10.97 m across and 23.77 m long.
+5. Tap **Mark player foot on this frame**, then tap the midpoint between the player's feet / ground-contact point to save a manual point in court x/y metres and signed baseline distance. Positive means behind the baseline; negative means inside the court.
+6. Use **Mark serve / shot location on this frame** to save a user-labelled event location in calibrated court metres. The event type comes from the event-review field.
 
-1. Choose a local video through Android's document picker. Uploads use a 16 MiB resumable chunk protocol, byte-offset acknowledgements, bounded retries and progress reporting. The session ID is kept on-device so selecting the same document again can resume an interrupted upload for up to seven days. The configured total file-size ceiling is 10 GiB.
-2. Inspect duration, resolution, frame rate and codec through ffprobe; optionally enter the shared API bearer token when the backend is configured to require it.
-3. Extract a JPEG frame at a chosen timestamp.
-4. Request a heuristic green-region court-corner suggestion or tap the four corners manually in the order far-left, far-right, near-right, near-left. The app overlays the selected points so they can be checked before saving.
-5. Save a manual court calibration and project a selected player's feet / ground-contact point into baseline distance in metres.
-6. Start sampled analysis and refresh its progress. The default is a balanced 0.5-second sample interval (2 frames per second); frames are resized to a maximum analysis width of 960 pixels before CV processing.
-7. Inspect near-end / far-end position summaries and density heatmaps.
-8. Preview trajectory-change candidates at their source timestamps, then accept, reject or relabel them.
-9. Add a manually confirmed event with an explicit timestamp and event type when the automatic detector misses it.
-10. Export the court-positioning and reliability report as SVG, PNG or PDF.
-11. Play the source video from the backend with seek support, or delete the uploaded video and associated local analysis files.
+These measurements depend on correctly paired corners and a stable camera view. Recalibrate after the camera pans, zooms or cuts. A wrong calibration can produce plausible-looking but wrong distances.
 
-## Reliability limits
+## On-device analysis
 
-The current pipeline uses a green-region court heuristic, OpenCV's generic HOG pedestrian detector, a bounding-box-bottom ground-point approximation and a colour / compact-blob ball-candidate filter. These are not tennis-trained validated models or a robust multi-object player/ball tracker. They can miss the ball or players, detect spectators, and fail on camera cuts, zooms and occlusions. Automatic detections remain unverified candidates; the user must confirm court calibration and event labels before using event-derived statistics.
+The WorkManager pipeline processes bounded five-second chunks at a five-frames-per-second sampling grid:
 
-Position averages and heatmaps are prototype indicators based on generic person proposals. The current worker runs in-process and stores jobs / media locally. It is not a multi-user production service and does not provide authentication, cloud media storage, durable queue processing or integrated video playback.
+- **Player poses:** MediaPipe Pose Landmarker Lite is asked for up to two visible people. Foot/ankle points and wrist visibility are recorded. A short-term nearest-foot-point association assigns temporary P1/P2 labels; this is not a verified identity tracker and can swap during occlusion or camera cuts. Pose is sampled on alternate frames (about 2.5 observations per second).
+- **Tennis ball:** TrackNet V1 is run on three consecutive frames to generate a tennis-ball probability heatmap and a candidate ball point. This is a model proposal, not a continuously validated track; fast motion, low resolution, camera changes and occlusion can cause misses or false detections.
+- **Court mapping:** where four corners are available, player foot points and ball points are projected into court metres. This assumes the camera remains in the same view as the selected calibration.
+- **Frame diagnostics:** green-pixel coverage, coarse frame-to-frame change, brightness and sample timestamps are also stored.
+- **Events:** sharp ball-path changes may become possible racket-contact/bounce/direction-change candidates. Candidates remain `needs_review`; they are not automatically converted into official serves, contacts, winners, errors or bounces.
 
-## Release signing (Android)
+The five-fps sample grid is a resource-conscious first mobile implementation, not full-frame-rate analysis. Review the source frame and correct event type/time before using any event count.
 
-The release workflow builds version `0.4.0`. A signed release is produced only when the repository has all four Actions secrets configured:
+## Review and visualisation
+
+- Source-frame preview can overlay the nearest player pose boxes/feet and ball proposal.
+- The mini-court plots calibrated P1/P2 trails, density dots and ball observations.
+- Review candidate events by accepting, rejecting or relabelling them.
+- Add manually confirmed events at a selected timestamp.
+- Save a calibrated manual position or serve/shot location.
+- Export the full sampled timeline, event-review table and manual court positions as CSV.
+- Export a court infographic/report as SVG, PNG or PDF.
+
+CSV export of the sample timeline reads the full on-device sample log; the in-app mini-court currently uses a bounded recent sample window for display.
+
+## Background processing and storage
+
+Each WorkManager job analyses a bounded five-second segment and schedules the next segment. This keeps work persistent across normal activity/process exit and device restart. Android controls when work runs; battery saver, storage-provider availability, thermal state and system policy can defer processing. A user force-stop prevents work from restarting until the app is opened again.
+
+Original videos selected from the phone remain in their original location. Direct-link downloads are stored under the app's private files directory. Project metadata, frame samples, calibration points and event reviews remain in app-private storage. Uninstalling the app removes app-private projects and downloaded copies; it does not delete a selected original video.
+
+## Accuracy and current limitations
+
+This is an AI-assisted prototype, not a validated professional match-statistics system.
+
+- MediaPipe pose proposals are generic human poses, not tennis-specific player detections.
+- P1/P2 are temporary spatial associations, not guaranteed player identities across ends/changeovers.
+- TrackNet V1 ball positions are low-confidence proposals until checked against the video; the app does not yet have a robust long-gap ball tracker.
+- No automatic court-line/keypoint detector or camera-pan/zoom segmentation is implemented. Green-region suggestions must be checked.
+- There is no trained serve/forehand/backhand/volley classifier, landing detector, bounce validator or point-outcome model in this release.
+- The app can manually measure a ground point or event location in court metres after calibration. Those manual measurements are different from model-derived observations.
+- Automatic event candidates are heuristic review aids, not official statistics.
+
+Reliable automatic return position, serve placement, shot placement, rally structure, winners/errors and tactical comparisons still require tennis-specific models, longer temporal tracking, labelled match datasets, device benchmarks and held-out validation.
+
+## Legacy backend
+
+The previous FastAPI service remains in the repository for research/reference comparisons. It is not on the Android execution path and is not required for either local-video or direct-HTTPS-link analysis.
+
+## Release signing
+
+The release workflow builds version `0.5.0`. A signed APK is produced only when all four repository Actions secrets are configured:
 
 - `ANDROID_KEYSTORE_BASE64` — base64-encoded keystore file.
 - `ANDROID_KEYSTORE_PASSWORD` — keystore password.
 - `ANDROID_KEY_ALIAS` — signing-key alias.
 - `ANDROID_KEY_PASSWORD` — signing-key password.
 
-Store the keystore securely offline and back it up. Do not commit it to the public repository. The same signing key must be retained for future app updates. Without all four secrets the workflow produces an explicitly labelled **unsigned** release APK artifact; that file is not installable as a normal production app until signed with your release key.
-
-Run the workflow from GitHub Actions → Android Release APK → Run workflow. When signing is configured, the workflow uploads the signed APK and publishes the `v0.4.0` GitHub Release. When signing is absent, it uploads only the unsigned release artifact for inspection.
-
-
-## API bearer-token configuration
-
-For a single-instance private deployment, set `TVI_API_TOKEN` to a long random value and set `TVI_ENVIRONMENT=production`. The backend refuses to start in production mode without this token and requires `Authorization: Bearer <token>` on API routes (health and API documentation remain public). Enter the same token in the app's backend connection screen. This is a shared service token, not multi-user identity, account isolation or per-user media ownership. Put the backend behind HTTPS before using real footage; the release Android manifest disallows cleartext HTTP.
+The same signing key must be retained for future updates. Without all four secrets the workflow produces an explicitly labelled unsigned APK artifact, not a production-installable release.

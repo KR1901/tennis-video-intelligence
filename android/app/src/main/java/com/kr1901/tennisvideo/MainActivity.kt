@@ -1,25 +1,27 @@
 package com.kr1901.tennisvideo
 
-import android.content.Intent
+import android.content.Context
 import android.graphics.Bitmap
-import android.os.Bundle
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.widget.MediaController
 import android.widget.VideoView
+import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,19 +29,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -49,91 +55,42 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kr1901.tennisvideo.data.VideoApi
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
-import kotlin.math.min
+import java.util.Locale
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import kotlin.math.max
 
-private val CourtGreen = Color(0xFF16A085)
-private val Ink = Color(0xFF17222D)
-
-private val Muted = Color(0xFF64717C)
-
-@Composable
-private fun GlassCard(
-    modifier: Modifier = Modifier,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(24.dp),
-    content: @Composable ColumnScope.() -> Unit
-) {
-    val glassFill = Brush.verticalGradient(
-        colors = listOf(
-            Color.White.copy(alpha = 0.88f),
-            Color(0xFFEAF1FC).copy(alpha = 0.78f),
-            Color(0xFFF8FAFF).copy(alpha = 0.86f)
-        )
-    )
-    Surface(
-        modifier = modifier
-            .shadow(
-                elevation = 18.dp,
-                shape = shape,
-                ambientColor = Color(0x24394D70),
-                spotColor = Color(0x24394D70)
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.98f),
-                        Color.White.copy(alpha = 0.42f),
-                        Color(0xFFB9C7DD).copy(alpha = 0.48f)
-                    )
-                ),
-                shape = shape
-            ),
-        shape = shape,
-        color = Color.Transparent,
-        contentColor = Ink,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Column(
-            modifier = Modifier.background(glassFill, shape),
-            content = content
-        )
-    }
-}
-
-private fun formatBytes(bytes: Long): String {
-    val units = listOf("B", "KB", "MB", "GB")
-    var value = bytes.toDouble()
-    var unit = 0
-    while (value >= 1024.0 && unit < units.lastIndex) {
-        value /= 1024.0
-        unit += 1
-    }
-    return if (unit == 0) bytes.toString() + " " + units[unit] else String.format(Locale.US, "%.1f %s", value, units[unit])
-}
+private val TennisGreen = Color(0xFF167D68)
+private val AppInk = Color(0xFF18232D)
+private val AppMuted = Color(0xFF65727E)
+private val Page = Color(0xFFF2F5F9)
+private const val MAX_LOCAL_VIDEO_BYTES = 4_768L * 1024L * 1024L
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -141,68 +98,315 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(
                 colorScheme = lightColorScheme(
-                    primary = CourtGreen,
+                    primary = TennisGreen,
                     onPrimary = Color.White,
-                    secondary = Ink,
-                    background = Color(0xFFF0F3FA),
-                    surface = Color(0xEFFFFFFF),
-                    surfaceVariant = Color(0xDCEAF0F8),
-                    onSurface = Ink,
+                    secondary = AppInk,
+                    background = Page,
+                    surface = Color.White,
+                    onSurface = AppInk
                 )
             ) {
-                TennisVideoApp()
+                LocalTennisVideoApp()
             }
         }
     }
 }
 
 @Composable
-private fun TennisVideoApp() {
+private fun LocalTennisVideoApp() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
-    var apiBaseUrl by remember { mutableStateOf(if (BuildConfig.DEBUG) "http://10.0.2.2:8000" else "") }
-    var apiToken by remember { mutableStateOf("") }
-    var showVideoPreview by remember { mutableStateOf(false) }
-    var selectedUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    var selectedName by remember { mutableStateOf("No video selected") }
-    var videoId by remember { mutableStateOf<String?>(null) }
-    var calibrationId by remember { mutableStateOf<String?>(null) }
+    var project by remember { mutableStateOf<JSONObject?>(null) }
+    val recentProjects = remember { mutableStateListOf<JSONObject>() }
+    var localStorageBytes by remember { mutableStateOf(0L) }
     var frameBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var timestampText by remember { mutableStateOf("10.0") }
-    var playerEnd by remember { mutableStateOf("near") }
-    var selectedPlayerPoint by remember { mutableStateOf<Pair<Float, Float>?>(null) }
-    var mediaSummary by remember { mutableStateOf("Video metadata has not been inspected.") }
-    var measurementSummary by remember { mutableStateOf("No position measured yet.") }
-    var statusMessage by remember { mutableStateOf("Connect to the backend to begin.") }
     var busy by remember { mutableStateOf(false) }
-    var uploadProgress by remember { mutableStateOf(0f) }
-    var uploadedBytes by remember { mutableStateOf(0L) }
-    var uploadTotalBytes by remember { mutableStateOf(0L) }
-    val calibrationPoints = remember { mutableStateListOf<Pair<Float, Float>>() }
-    var analysisId by remember { mutableStateOf<String?>(null) }
-    var analysisStatus by remember { mutableStateOf("Not started") }
-    var analysisProgress by remember { mutableStateOf(0) }
-    var analysisSummary by remember { mutableStateOf<JSONObject?>(null) }
-    var manualEventTimestamp by remember { mutableStateOf("10.0") }
-    var manualEventType by remember { mutableStateOf("serve_bounce") }
-    var manualServeNumber by remember { mutableStateOf("") }
-    var manualServeResult by remember { mutableStateOf("") }
-    var manualShotDepth by remember { mutableStateOf("") }
-    var manualShotDirection by remember { mutableStateOf("") }
-    var reportBytes by remember { mutableStateOf<ByteArray?>(null) }
-    val eventCandidates = remember { mutableStateListOf<JSONObject>() }
+    var message by remember { mutableStateOf("Choose a match video stored on this device to begin.") }
+    var directVideoUrl by remember { mutableStateOf("") }
+    var downloadWorkId by remember { mutableStateOf<UUID?>(null) }
+    var downloadStatus by remember { mutableStateOf("") }
+    var downloadPercent by remember { mutableStateOf(0f) }
+    var timestampText by remember { mutableStateOf("0") }
+    var frameTimestampMs by remember { mutableStateOf(0L) }
+    var markPlayerPosition by remember { mutableStateOf(false) }
+    var markEventLocation by remember { mutableStateOf(false) }
+    var manualEventType by remember { mutableStateOf("serve") }
+    var manualEventNote by remember { mutableStateOf("") }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showVideoPlayback by remember { mutableStateOf(false) }
+    val courtCorners = remember { mutableStateListOf<Pair<Float, Float>>() }
+
+    suspend fun refreshProjectLibrary() {
+        val result = withContext(Dispatchers.IO) {
+            LocalProjectStore.listProjects(context) to LocalProjectStore.storageUsageBytes(context)
+        }
+        recentProjects.clear()
+        recentProjects.addAll(result.first)
+        localStorageBytes = result.second
+    }
+
+    suspend fun restoreProject(id: String) {
+        val saved = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+        project = saved
+        if (saved != null) {
+            val uri = Uri.parse(saved.optString("content_uri"))
+            frameBitmap = withContext(Dispatchers.IO) {
+                LocalVideoInspector.frameAt(context, uri, 0L)
+            }
+            frameTimestampMs = 0L
+            timestampText = "0"
+            showVideoPlayback = false
+            markPlayerPosition = false
+            markEventLocation = false
+            courtCorners.clear()
+            val storedCorners = saved.optJSONArray("court_corners") ?: JSONArray()
+            for (index in 0 until storedCorners.length()) {
+                val point = storedCorners.optJSONObject(index) ?: continue
+                courtCorners.add(point.optDouble("x").toFloat() to point.optDouble("y").toFloat())
+            }
+        } else {
+            frameBitmap = null
+            courtCorners.clear()
+        }
+        refreshProjectLibrary()
+    }
+
+    LaunchedEffect(Unit) {
+        refreshProjectLibrary()
+        val preferences = context.getSharedPreferences("tvi_local_projects", Context.MODE_PRIVATE)
+        val lastId = preferences.getString("last_project_id", null)
+        if (!lastId.isNullOrBlank()) restoreProject(lastId)
+        val savedDownloadId = preferences.getString("active_download_work_id", null)
+        if (!savedDownloadId.isNullOrBlank()) {
+            downloadWorkId = runCatching { UUID.fromString(savedDownloadId) }.getOrNull()
+        }
+    }
+
+    LaunchedEffect(downloadWorkId) {
+        val workId = downloadWorkId ?: return@LaunchedEffect
+        val workManager = WorkManager.getInstance(context)
+        while (isActive) {
+            val info = withContext(Dispatchers.IO) {
+                runCatching { workManager.getWorkInfoById(workId).get() }.getOrNull()
+            }
+            if (info != null) {
+                val bytesDone = info.progress.getLong(DirectVideoDownloadWorker.KEY_BYTES_DONE, 0L)
+                val percent = info.progress.getInt(DirectVideoDownloadWorker.KEY_PERCENT, -1)
+                downloadPercent = if (percent >= 0) (percent / 100f).coerceIn(0f, 1f) else 0f
+                val total = info.progress.getLong(DirectVideoDownloadWorker.KEY_TOTAL_BYTES, -1L)
+                downloadStatus = if (total > 0L) {
+                    "Downloading " + formatBytes(bytesDone) + " of " + formatBytes(total) +
+                        " · " + (percent.coerceAtLeast(0)) + "%"
+                } else if (bytesDone > 0L) {
+                    "Downloaded " + formatBytes(bytesDone)
+                } else {
+                    "Waiting for a network connection..."
+                }
+
+                when (info.state) {
+                    androidx.work.WorkInfo.State.SUCCEEDED -> {
+                        val createdId = info.outputData.getString(DirectVideoDownloadWorker.KEY_PROJECT_ID)
+                        if (!createdId.isNullOrBlank()) {
+                            restoreProject(createdId)
+                            message = "Direct video downloaded and opened locally. No video was uploaded to a server."
+                        }
+                        downloadStatus = "Direct video import complete."
+                        context.getSharedPreferences("tvi_local_projects", Context.MODE_PRIVATE)
+                            .edit().remove("active_download_work_id").apply()
+                        downloadWorkId = null
+                        busy = false
+                        break
+                    }
+                    androidx.work.WorkInfo.State.FAILED,
+                    androidx.work.WorkInfo.State.CANCELLED -> {
+                        val error = info.outputData.getString(DirectVideoDownloadWorker.KEY_ERROR)
+                        downloadStatus = if (info.state == androidx.work.WorkInfo.State.CANCELLED) {
+                            "Direct video download cancelled."
+                        } else {
+                            "Direct video download failed."
+                        }
+                        message = error ?: downloadStatus
+                        context.getSharedPreferences("tvi_local_projects", Context.MODE_PRIVATE)
+                            .edit().remove("active_download_work_id").apply()
+                        downloadWorkId = null
+                        busy = false
+                        break
+                    }
+                    else -> {
+                        busy = true
+                    }
+                }
+            }
+            delay(1_000L)
+        }
+    }
+
+    val projectId = project?.optString("id")?.takeIf { it.isNotBlank() }
+    LaunchedEffect(projectId) {
+        val id = projectId ?: return@LaunchedEffect
+        while (isActive) {
+            delay(1500L)
+            val latest = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+            if (latest != null) project = latest
+        }
+    }
+
+    val videoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri ->
+            if (uri != null) {
+                scope.launch {
+                    busy = true
+                    message = "Reading the video from local storage..."
+                    try {
+                        val persistedReadGrant = runCatching {
+                            context.contentResolver.takePersistableUriPermission(
+                                uri,
+                                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            )
+                            context.contentResolver.persistedUriPermissions.any { permission ->
+                                permission.uri == uri && permission.isReadPermission
+                            }
+                        }.getOrDefault(false)
+                        if (!persistedReadGrant) {
+                            message = "Android did not grant persistent read access to this video provider. Choose a file provider that supports background access so analysis can continue after the app closes."
+                            return@launch
+                        }
+                        val metadata = withContext(Dispatchers.IO) {
+                            LocalVideoInspector.inspect(context, uri)
+                        }
+                        if (metadata.sizeBytes < 0L) {
+                            message = "This provider does not report the file size. Choose a local file whose size Android can verify so the 5 GB ceiling can be enforced."
+                        } else if (metadata.sizeBytes > MAX_LOCAL_VIDEO_BYTES) {
+                            message = "This video is larger than the 5 GB app limit. Select a smaller file."
+                        } else {
+                            val created = withContext(Dispatchers.IO) {
+                                LocalProjectStore.create(context, uri, metadata)
+                            }
+                            project = created
+                            frameBitmap = null
+                            courtCorners.clear()
+                            timestampText = "0"
+                            message = "Video opened locally. It has not been uploaded."
+                            val newId = created.optString("id")
+                            restoreProject(newId)
+                        }
+                    } catch (error: Exception) {
+                        message = "Could not open this video: " + (error.message ?: "unknown error")
+                    } finally {
+                        busy = false
+                    }
+                }
+            }
+        }
+    )
+
+    val csvExporter = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+        onResult = { uri ->
+            val id = projectId
+            if (uri != null && id != null) {
+                scope.launch {
+                    try {
+                        val csv = withContext(Dispatchers.IO) {
+                            LocalProjectStore.exportCsv(context, id)
+                        }
+                        withContext(Dispatchers.IO) {
+                            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
+                                ?: error("Could not open the selected destination")
+                        }
+                        message = "CSV timeline exported."
+                    } catch (error: Exception) {
+                        message = "CSV export failed: " + (error.message ?: "unknown error")
+                    }
+                }
+            }
+        }
+    )
+
+    val positionsCsvExporter = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+        onResult = { uri ->
+            val id = projectId
+            if (uri != null && id != null) {
+                scope.launch {
+                    try {
+                        val csv = withContext(Dispatchers.IO) {
+                            LocalProjectStore.exportPositionsCsv(context, id)
+                        }
+                        withContext(Dispatchers.IO) {
+                            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
+                                ?: error("Could not open the selected destination")
+                        }
+                        message = "Manual court-position CSV exported."
+                    } catch (error: Exception) {
+                        message = "Position export failed: " + (error.message ?: "unknown error")
+                    }
+                }
+            }
+        }
+    )
+
+    val eventsCsvExporter = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+        onResult = { uri ->
+            val id = projectId
+            if (uri != null && id != null) {
+                scope.launch {
+                    try {
+                        val csv = withContext(Dispatchers.IO) {
+                            LocalProjectStore.exportEventsCsv(context, id)
+                        }
+                        withContext(Dispatchers.IO) {
+                            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
+                                ?: error("Could not open the selected destination")
+                        }
+                        message = "Event review CSV exported."
+                    } catch (error: Exception) {
+                        message = "Event export failed: " + (error.message ?: "unknown error")
+                    }
+                }
+            }
+        }
+    )
+
+    val reportSvgSaver = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("image/svg+xml"),
+        onResult = { uri ->
+            val id = projectId
+            if (uri != null && id != null) scope.launch {
+                try {
+                    val data = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+                        ?: error("Project was not found")
+                    val svg = withContext(Dispatchers.Default) { LocalReportRenderer.renderSvg(data) }
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(svg) }
+                            ?: error("Could not open the selected destination")
+                    }
+                    message = "Court infographic SVG exported."
+                } catch (error: Exception) {
+                    message = "SVG export failed: " + (error.message ?: "unknown error")
+                }
+            }
+        }
+    )
 
     val reportPngSaver = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("image/png"),
         onResult = { uri ->
-            val bytes = reportBytes
-            if (uri != null && bytes != null) {
+            val id = projectId
+            if (uri != null && id != null) scope.launch {
                 try {
-                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                    statusMessage = "PNG report saved."
+                    val data = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+                        ?: error("Project was not found")
+                    val bytes = withContext(Dispatchers.Default) { LocalReportRenderer.renderPng(data) }
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                            ?: error("Could not open the selected destination")
+                    }
+                    message = "Court infographic PNG exported."
                 } catch (error: Exception) {
-                    statusMessage = "Could not save PNG report: ${error.message}"
+                    message = "PNG export failed: " + (error.message ?: "unknown error")
                 }
             }
         }
@@ -211,499 +415,625 @@ private fun TennisVideoApp() {
     val reportPdfSaver = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/pdf"),
         onResult = { uri ->
-            val bytes = reportBytes
-            if (uri != null && bytes != null) {
+            val id = projectId
+            if (uri != null && id != null) scope.launch {
                 try {
-                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                    statusMessage = "PDF report saved."
-                } catch (error: Exception) {
-                    statusMessage = "Could not save PDF report: ${error.message}"
-                }
-            }
-        }
-    )
-
-    val reportSaver = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("image/svg+xml"),
-        onResult = { uri ->
-            val bytes = reportBytes
-            if (uri != null && bytes != null) {
-                try {
-                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                    statusMessage = "SVG report saved."
-                } catch (error: Exception) {
-                    statusMessage = "Could not save SVG report: ${error.message}"
-                }
-            }
-        }
-    )
-
-    val videoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-        onResult = { uri ->
-            if (uri != null) {
-                runCatching {
-                    context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                }
-                selectedUri = uri
-                uploadProgress = 0f
-                uploadedBytes = 0L
-                uploadTotalBytes = 0L
-                analysisId = null
-                analysisSummary = null
-                eventCandidates.clear()
-                analysisStatus = "Not started"
-                selectedName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected video"
-                videoId = null
-                calibrationId = null
-                frameBitmap = null
-                calibrationPoints.clear()
-                selectedPlayerPoint = null
-                analysisId = null
-                analysisSummary = null
-                eventCandidates.clear()
-                analysisStatus = "Not started"
-                statusMessage = "Video selected. Upload it to start."
-            }
-        }
-    )
-
-    fun api(): VideoApi = VideoApi(
-        apiBaseUrl,
-        context.contentResolver,
-        apiToken,
-        context.getSharedPreferences("tvi_upload_state", android.content.Context.MODE_PRIVATE)
-    )
-
-    fun refreshAnalysis() {
-        val id = analysisId ?: return
-        scope.launch {
-            busy = true
-            statusMessage = "Refreshing analysis..."
-            try {
-                val response = withContext(Dispatchers.IO) { api().getAnalysis(id) }
-                analysisStatus = response.optString("status", "unknown")
-                analysisProgress = response.optInt("progress_pct", 0)
-                analysisSummary = response.optJSONObject("summary")
-                if (analysisStatus == "completed") {
-                    val eventResponse = withContext(Dispatchers.IO) { api().getAnalysisEvents(id) }
-                    eventCandidates.clear()
-                    val array = eventResponse.optJSONArray("events") ?: JSONArray()
-                    for (index in 0 until array.length()) {
-                        array.optJSONObject(index)?.let(eventCandidates::add)
+                    val data = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+                        ?: error("Project was not found")
+                    val bytes = withContext(Dispatchers.Default) { LocalReportRenderer.renderPdf(data) }
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                            ?: error("Could not open the selected destination")
                     }
-                    statusMessage = "Analysis complete. Review event candidates before using event metrics."
-                } else if (analysisStatus == "failed") {
-                    statusMessage = "Analysis failed: ${response.optString("error", "Unknown error")}"
-                } else {
-                    statusMessage = "Analysis ${analysisStatus.lowercase()} · $analysisProgress%"
+                    message = "Court infographic PDF exported."
+                } catch (error: Exception) {
+                    message = "PDF export failed: " + (error.message ?: "unknown error")
                 }
-            } catch (error: Exception) {
-                statusMessage = "Analysis refresh failed: ${error.message}"
-            } finally {
-                busy = false
             }
         }
+    )
+
+    val sampleArray = project?.optJSONArray("samples") ?: JSONArray()
+    val recentSampleCount = sampleArray.length()
+    val sampleCount = project?.optInt("sample_count", recentSampleCount) ?: recentSampleCount
+    val manualPositionArray = project?.optJSONArray("manual_positions") ?: JSONArray()
+    val manualPositionCount = manualPositionArray.length()
+    val eventArray = project?.optJSONArray("events") ?: JSONArray()
+    val eventCount = eventArray.length()
+    val reviewableEventCount = (0 until eventCount).count {
+        eventArray.optJSONObject(it)?.optString("review_status") == "needs_review"
     }
-
-
-
-    fun reviewCandidate(event: JSONObject, eventType: String?) {
-        val id = analysisId ?: return
-        val eventId = event.optString("event_id")
-        if (eventId.isBlank()) return
-        scope.launch {
-            busy = true
-            statusMessage = "Saving event review..."
-            try {
-                withContext(Dispatchers.IO) {
-                    api().reviewEvent(
-                        id,
-                        eventId,
-                        eventType,
-                        accepted = eventType != null,
-                        note = "Reviewed by the Android user."
-                    )
-                }
-                refreshAnalysis()
-            } catch (error: Exception) {
-                statusMessage = "Event review failed: ${error.message}"
-                busy = false
-            }
+    val latestManualPosition = if (manualPositionCount > 0) {
+        manualPositionArray.optJSONObject(manualPositionCount - 1)
+    } else {
+        null
+    }
+    val latestSample = sampleArray.optJSONObject(recentSampleCount - 1)
+    val latestPlayers = latestSample?.optJSONArray("players") ?: JSONArray()
+    var hasCalibratedPlayers = false
+    for (index in 0 until latestPlayers.length()) {
+        if (latestPlayers.optJSONObject(index)?.has("court_x_m") == true) {
+            hasCalibratedPlayers = true
+            break
         }
     }
+    val latestBall = latestSample?.optJSONObject("ball")
+    var greenTotal = 0.0
+    var motionTotal = 0.0
+    var greenCount = 0
+    var motionCount = 0
+    var ballDetectionCount = 0
+    for (index in 0 until recentSampleCount) {
+        val sample = sampleArray.optJSONObject(index) ?: continue
+        if (sample.has("green_pct")) {
+            greenTotal += sample.optDouble("green_pct")
+            greenCount++
+        }
+        if (sample.has("motion_pct")) {
+            motionTotal += sample.optDouble("motion_pct")
+            motionCount++
+        }
+        if (sample.optJSONObject("ball")?.optBoolean("detected", false) == true) {
+            ballDetectionCount++
+        }
+    }
+    val averageGreen = if (greenCount > 0) greenTotal / greenCount else 0.0
+    val averageMotion = if (motionCount > 0) motionTotal / motionCount else 0.0
+    val ballDetectionRate = if (recentSampleCount > 0) ballDetectionCount * 100.0 / recentSampleCount else 0.0
+    val status = project?.optString("analysis_status", "not_started") ?: "not_started"
+    val progress = project?.optInt("progress_pct", 0) ?: 0
+    val durationMs = project?.optLong("duration_ms", 0L) ?: 0L
+    val previewOverlaySample = (0 until recentSampleCount)
+        .mapNotNull { sampleArray.optJSONObject(it) }
+        .minByOrNull { abs(it.optLong("timestamp_ms") - frameTimestampMs) }
+        ?.takeIf { abs(it.optLong("timestamp_ms") - frameTimestampMs) <= 700L }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
-        Box(
+    Surface(modifier = Modifier.fillMaxSize(), color = Page) {
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            Color(0xFFF3F7FC),
-                            Color(0xFFE9EDF8),
-                            Color(0xFFF8F8FC)
-                        )
-                    )
-                )
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val glowRadius = size.minDimension * 0.46f
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color(0xFF91DCCF).copy(alpha = 0.36f), Color.Transparent),
-                        center = Offset(size.width * 0.12f, size.height * 0.16f),
-                        radius = glowRadius
-                    ),
-                    radius = glowRadius,
-                    center = Offset(size.width * 0.12f, size.height * 0.16f)
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color(0xFFB6C3F2).copy(alpha = 0.38f), Color.Transparent),
-                        center = Offset(size.width * 0.92f, size.height * 0.43f),
-                        radius = glowRadius
-                    ),
-                    radius = glowRadius,
-                    center = Offset(size.width * 0.92f, size.height * 0.43f)
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 18.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = "Tennis Video Intelligence",
                     fontSize = 25.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Ink
+                    color = AppInk
                 )
                 Text(
-                    text = "Video upload · court calibration · positioning prototype",
-                    color = Muted,
-                    fontSize = 13.sp
+                    text = "Private, on-device video workspace",
+                    fontSize = 14.sp,
+                    color = AppMuted
                 )
             }
 
-            GlassCard(shape = RoundedCornerShape(16.dp)) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    SectionHeading("1", "Backend connection")
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE7F4F0)),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("No backend. No upload. No API key.", color = TennisGreen, fontWeight = FontWeight.Bold)
+                    Text(
+                        "The selected video stays in its original location on your phone. The app reads it directly and saves analysis data in its private app storage.",
+                        color = AppInk,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("1 · Select a match video", fontWeight = FontWeight.Bold, color = AppInk)
+                    Text(
+                        project?.optString("display_name") ?: "No video selected",
+                        color = AppMuted,
+                        fontSize = 13.sp
+                    )
+                    Button(
+                        onClick = { videoPicker.launch(arrayOf("video/*")) },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Choose video from this device")
+                    }
+                    HorizontalDivider()
                     OutlinedTextField(
-                        value = apiBaseUrl,
-                        onValueChange = { apiBaseUrl = it },
+                        value = directVideoUrl,
+                        onValueChange = { directVideoUrl = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Backend URL") },
-                        placeholder = { Text("https://your-api.example.com") },
+                        label = { Text("Direct HTTPS video URL") },
+                        placeholder = { Text("https://example.com/match.mp4") },
                         supportingText = {
-                            Text("Production requires HTTPS. http://10.0.2.2:8000 is only for the Android emulator in a debug build.")
+                            Text("Optional: imports a direct video-file link over HTTPS. This does not fetch YouTube/watch pages, playlists, DRM streams or subscription videos.")
                         },
-                        singleLine = true
+                        singleLine = true,
+                        enabled = !busy
                     )
-                    OutlinedTextField(
-                        value = apiToken,
-                        onValueChange = { apiToken = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("API bearer token (required in production)") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true
-                    )
-                    OutlinedButton(
+                    Button(
                         onClick = {
-                            scope.launch {
+                            val parsed = DirectVideoImportPolicy.parseAllowedHttpsUrl(directVideoUrl.trim())
+                            if (parsed == null) {
+                                message = "Enter a valid direct HTTPS video-file URL."
+                            } else {
+                                val constraints = Constraints.Builder()
+                                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                                    .build()
+                                val request = OneTimeWorkRequestBuilder<DirectVideoDownloadWorker>()
+                                    .setInputData(
+                                        workDataOf(DirectVideoDownloadWorker.KEY_URL to directVideoUrl.trim())
+                                    )
+                                    .setConstraints(constraints)
+                                    .setBackoffCriteria(
+                                        BackoffPolicy.EXPONENTIAL,
+                                        30L,
+                                        TimeUnit.SECONDS
+                                    )
+                                    .build()
+                                WorkManager.getInstance(context).enqueueUniqueWork(
+                                    "tvi-direct-video-" + request.id,
+                                    ExistingWorkPolicy.KEEP,
+                                    request
+                                )
+                                context.getSharedPreferences("tvi_local_projects", Context.MODE_PRIVATE)
+                                    .edit().putString("active_download_work_id", request.id.toString()).apply()
+                                downloadWorkId = request.id
+                                downloadPercent = 0f
+                                downloadStatus = "Waiting for a network connection..."
                                 busy = true
-                                statusMessage = "Checking backend..."
-                                try {
-                                    val response = withContext(Dispatchers.IO) { api().health() }
-                                    statusMessage = "Backend connected: ${response.optString("status", "ok")}"
-                                } catch (error: Exception) {
-                                    statusMessage = "Connection failed: ${error.message}"
-                                } finally {
-                                    busy = false
-                                }
+                                message = "Direct HTTPS download queued. The file will be stored locally and analysed on this phone."
                             }
                         },
                         enabled = !busy,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Check backend")
+                        Text("Download direct video link")
                     }
-                }
-            }
-
-            GlassCard(shape = RoundedCornerShape(16.dp)) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    SectionHeading("2", "Upload a match")
-                    Text(selectedName, color = Muted, fontSize = 13.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = { videoPicker.launch(arrayOf("video/*")) },
-                            enabled = !busy,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Choose video")
-                        }
-                        Button(
-                            onClick = {
-                                val uri = selectedUri
-                                if (uri != null) {
-                                    scope.launch {
-                                        busy = true
-                                        statusMessage = "Uploading video..."
-                                        uploadProgress = 0f
-                                        uploadedBytes = 0L
-                                        uploadTotalBytes = 0L
-                                        try {
-                                            val response = withContext(Dispatchers.IO) {
-                                                api().uploadVideo(uri) { sent, total ->
-                                                    scope.launch {
-                                                        uploadedBytes = sent
-                                                        uploadTotalBytes = total
-                                                        uploadProgress = if (total > 0L) {
-                                                            sent.toFloat() / total.toFloat()
-                                                        } else 0f
-                                                    }
-                                                }
-                                            }
-                                            videoId = response.getString("video_id")
-                                            analysisId = null
-                                            analysisSummary = null
-                                            eventCandidates.clear()
-                                            calibrationId = null
-                                            calibrationPoints.clear()
-                                            selectedPlayerPoint = null
-                                            statusMessage = "Upload complete. Video ID: $videoId"
-                                        } catch (error: Exception) {
-                                            statusMessage = "Upload failed: ${error.message}"
-                                        } finally {
-                                            busy = false
-                                        }
-                                    }
-                                }
-                            },
-                            enabled = selectedUri != null && !busy,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Upload")
-                        }
-                    }
-                    if (uploadTotalBytes > 0L && (busy || uploadProgress >= 1f)) {
+                    if (downloadWorkId != null) {
                         LinearProgressIndicator(
-                            progress = { uploadProgress.coerceIn(0f, 1f) },
+                            progress = { downloadPercent },
                             modifier = Modifier.fillMaxWidth()
                         )
+                        Text(downloadStatus, color = AppMuted, fontSize = 12.sp)
+                        OutlinedButton(
+                            onClick = {
+                                downloadWorkId?.let { WorkManager.getInstance(context).cancelWorkById(it) }
+                            },
+                            enabled = busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Cancel download")
+                        }
+                    }
+                    project?.let { item ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(formatDuration(item.optLong("duration_ms")), color = AppInk, fontSize = 12.sp)
+                            Text(formatBytes(item.optLong("size_bytes")), color = AppInk, fontSize = 12.sp)
+                        }
                         Text(
-                            "${formatBytes(uploadedBytes)} of ${formatBytes(uploadTotalBytes)} · ${"%.0f".format(Locale.US, uploadProgress * 100f)}%",
-                            color = Muted,
+                            item.optInt("width").toString() + " × " + item.optInt("height").toString() +
+                                " px · " + item.optString("mime_type", "video"),
+                            color = AppMuted,
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            "Local processing limit: 4,768 MiB (just under 5 GB).",
+                            color = AppMuted,
                             fontSize = 12.sp
                         )
                     }
-                    if (videoId != null) {
-                        Text("Video ID: $videoId", color = CourtGreen, fontSize = 12.sp)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
-                                onClick = { showVideoPreview = !showVideoPreview },
-                                enabled = !busy,
-                                modifier = Modifier.weight(1f)
+                }
+            }
+
+            if (recentProjects.isNotEmpty()) {
+                Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Recent local projects", fontWeight = FontWeight.Bold, color = AppInk)
+                        Text(
+                            recentProjects.size.toString() + " saved project(s) · " + formatBytes(localStorageBytes) + " app storage used",
+                            color = AppMuted,
+                            fontSize = 12.sp
+                        )
+                        for (item in recentProjects.take(8)) {
+                            val itemId = item.optString("id")
+                            val isSelected = itemId == projectId
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text(if (showVideoPreview) "Hide video" else "Play uploaded video")
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    val id = videoId
-                                    if (id != null) {
-                                        scope.launch {
-                                            busy = true
-                                            try {
-                                                withContext(Dispatchers.IO) { api().deleteVideo(id) }
-                                                videoId = null
-                                                calibrationId = null
-                                                analysisId = null
-                                                analysisSummary = null
-                                                eventCandidates.clear()
-                                                frameBitmap = null
-                                                calibrationPoints.clear()
-                                                selectedPlayerPoint = null
-                                                showVideoPreview = false
-                                                statusMessage = "Uploaded video and its analysis files were deleted."
-                                            } catch (error: Exception) {
-                                                statusMessage = "Delete failed: ${error.message}"
-                                            } finally {
-                                                busy = false
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        item.optString("display_name", "Match video"),
+                                        color = AppInk,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 13.sp,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        formatDuration(item.optLong("duration_ms")) +
+                                            " · " + item.optString("analysis_status", "not started").replace('_', ' ') +
+                                            " · " + formatBytes(item.optLong("size_bytes")),
+                                        color = AppMuted,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                if (isSelected) {
+                                    Text("Open", color = TennisGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                } else {
+                                    OutlinedButton(
+                                        onClick = {
+                                            scope.launch {
+                                                busy = true
+                                                try {
+                                                    restoreProject(itemId)
+                                                    message = "Opened local project: " + item.optString("display_name")
+                                                } catch (error: Exception) {
+                                                    message = "Could not open project: " + (error.message ?: "unknown error")
+                                                } finally {
+                                                    busy = false
+                                                }
                                             }
-                                        }
-                                    }
-                                },
-                                enabled = !busy,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Delete video")
+                                        },
+                                        enabled = !busy
+                                    ) { Text("Open") }
+                                }
                             }
                         }
-                        if (showVideoPreview) {
-                            AndroidView(
-                                factory = { viewContext ->
-                                    VideoView(viewContext).apply {
-                                        setMediaController(MediaController(viewContext).also { it.setAnchorView(this) })
-                                        setVideoURI(Uri.parse(api().videoStreamUrl(videoId!!)), api().videoStreamHeaders())
-                                        setOnPreparedListener { player -> player.start() }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(250.dp)
+                        if (recentProjects.size > 8) {
+                            Text(
+                                "Showing the eight most recently updated projects.",
+                                color = AppMuted,
+                                fontSize = 11.sp
                             )
                         }
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    busy = true
-                                    statusMessage = "Inspecting video with ffprobe..."
-                                    try {
-                                        val response = withContext(Dispatchers.IO) {
-                                            api().inspectVideo(videoId!!)
-                                        }
-                                        mediaSummary = buildString {
-                                            append("${response.optInt("width")} × ${response.optInt("height")}")
-                                            append(" · ${response.optDouble("frame_rate", 0.0).let { String.format(Locale.US, "%.2f fps", it) }}")
-                                            append(" · ${response.optDouble("duration_seconds", 0.0).let { String.format(Locale.US, "%.1f s", it) }}")
-                                            append(" · ${response.optString("video_codec", "unknown")}")
-                                        }
-                                        statusMessage = "Media inspection complete."
-                                    } catch (error: Exception) {
-                                        statusMessage = "Inspection failed: ${error.message}"
-                                    } finally {
-                                        busy = false
-                                    }
-                                }
-                            },
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Inspect video")
-                        }
-                        Text(mediaSummary, color = Muted, fontSize = 12.sp)
                     }
                 }
             }
 
-            if (videoId != null) {
-                GlassCard(shape = RoundedCornerShape(16.dp)) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        SectionHeading("3", "Preview a frame")
-                        OutlinedTextField(
-                            value = timestampText,
-                            onValueChange = { timestampText = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Timestamp in seconds") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true
-                        )
-                        Button(
-                            onClick = {
-                                val timestamp = timestampText.toDoubleOrNull()
-                                if (timestamp == null || timestamp < 0) {
-                                    statusMessage = "Enter a valid timestamp of zero or more seconds."
-                                } else {
-                                    scope.launch {
-                                        busy = true
-                                        statusMessage = "Extracting frame..."
-                                        try {
-                                            frameBitmap = withContext(Dispatchers.IO) {
-                                                api().getFrame(videoId!!, timestamp)
-                                            }
-                                            calibrationPoints.clear()
-                                            selectedPlayerPoint = null
-                                            statusMessage = "Frame ready. Tap the four court corners in order."
-                                        } catch (error: Exception) {
-                                            statusMessage = "Frame extraction failed: ${error.message}"
-                                        } finally {
-                                            busy = false
+            if (project != null) {
+                Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("2 · Inspect a frame", fontWeight = FontWeight.Bold, color = AppInk)
+                        if (frameBitmap != null) {
+                            val bitmap = frameBitmap!!
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio((bitmap.width.toFloat() / max(1, bitmap.height)).coerceIn(0.55f, 2.4f))
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.Black)
+                            ) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = "Selected video frame",
+                                    contentScale = ContentScale.FillBounds,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                Canvas(
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    val playerArray = previewOverlaySample?.optJSONArray("players") ?: JSONArray()
+                                    for (playerIndex in 0 until playerArray.length()) {
+                                        val player = playerArray.optJSONObject(playerIndex) ?: continue
+                                        val boxLeft = player.optDouble("box_left", -1.0).toFloat()
+                                        val boxTop = player.optDouble("box_top", -1.0).toFloat()
+                                        val boxRight = player.optDouble("box_right", -1.0).toFloat()
+                                        val boxBottom = player.optDouble("box_bottom", -1.0).toFloat()
+                                        if (boxLeft >= 0f && boxTop >= 0f && boxRight <= 1f && boxBottom <= 1f) {
+                                            drawRect(
+                                                color = Color.Cyan.copy(alpha = 0.75f),
+                                                topLeft = Offset(boxLeft * size.width, boxTop * size.height),
+                                                size = Size(
+                                                    (boxRight - boxLeft) * size.width,
+                                                    (boxBottom - boxTop) * size.height
+                                                ),
+                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
+                                            )
+                                        }
+                                        val footX = player.optDouble("foot_x", -1.0).toFloat()
+                                        val footY = player.optDouble("foot_y", -1.0).toFloat()
+                                        if (footX in 0f..1f && footY in 0f..1f) {
+                                            drawCircle(
+                                                Color.Cyan,
+                                                radius = 7f,
+                                                center = Offset(footX * size.width, footY * size.height)
+                                            )
+                                        }
+                                    }
+                                    val ball = previewOverlaySample?.optJSONObject("ball")
+                                    if (ball?.optBoolean("detected", false) == true) {
+                                        val ballX = ball.optDouble("x", -1.0).toFloat()
+                                        val ballY = ball.optDouble("y", -1.0).toFloat()
+                                        if (ballX in 0f..1f && ballY in 0f..1f) {
+                                            drawCircle(
+                                                Color.Yellow,
+                                                radius = 10f,
+                                                center = Offset(ballX * size.width, ballY * size.height),
+                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f)
+                                            )
+                                            drawCircle(
+                                                Color.Yellow,
+                                                radius = 3f,
+                                                center = Offset(ballX * size.width, ballY * size.height)
+                                            )
                                         }
                                     }
                                 }
-                            },
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Load frame")
-                        }
-
-                        val bitmap = frameBitmap
-                        if (bitmap != null) {
+                                Canvas(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .pointerInput(projectId, courtCorners.size, markPlayerPosition, markEventLocation, manualEventType, manualEventNote) {
+                                            detectTapGestures { offset ->
+                                                val x = (offset.x / size.width).coerceIn(0f, 1f)
+                                                val y = (offset.y / size.height).coerceIn(0f, 1f)
+                                                if (courtCorners.size < 4) {
+                                                    courtCorners.add(x to y)
+                                                    val id = projectId
+                                                    if (id != null) {
+                                                        val points = courtCorners.toList()
+                                                        scope.launch {
+                                                            withContext(Dispatchers.IO) {
+                                                                LocalProjectStore.setCourtCorners(context, id, points)
+                                                            }
+                                                            message = "Court corner " + points.size + " saved locally."
+                                                        }
+                                                    }
+                                                } else if (markPlayerPosition || markEventLocation) {
+                                                    val id = projectId
+                                                    val measurement = CourtProjector.project(courtCorners.toList(), x, y)
+                                                    if (id == null || measurement == null) {
+                                                        message = "This point could not be projected. Check that the four court corners are distinct and correctly ordered."
+                                                    } else {
+                                                        val timestamp = frameTimestampMs
+                                                        val savePlayerPoint = markPlayerPosition
+                                                        markPlayerPosition = false
+                                                        markEventLocation = false
+                                                        scope.launch {
+                                                            withContext(Dispatchers.IO) {
+                                                                if (savePlayerPoint) {
+                                                                    LocalProjectStore.addManualPosition(
+                                                                        context,
+                                                                        id,
+                                                                        timestamp,
+                                                                        x,
+                                                                        y,
+                                                                        measurement
+                                                                    )
+                                                                } else {
+                                                                    LocalProjectStore.addManualEvent(
+                                                                        context,
+                                                                        id,
+                                                                        timestamp,
+                                                                        manualEventType.trim(),
+                                                                        manualEventNote.trim(),
+                                                                        measurement
+                                                                    )
+                                                                }
+                                                            }
+                                                            project = withContext(Dispatchers.IO) {
+                                                                LocalProjectStore.load(context, id)
+                                                            }
+                                                            message = if (savePlayerPoint) {
+                                                                "Saved " + measurement.playerEnd +
+                                                                    "-side position: " +
+                                                                    String.format(Locale.US, "x %.2f m, y %.2f m; baseline distance %.2f m", measurement.xMeters, measurement.yMeters, measurement.baselineDistanceMeters) +
+                                                                    ". Positive means behind the baseline; negative means inside the court."
+                                                            } else {
+                                                                "Saved reviewed " + manualEventType + " location at " +
+                                                                    String.format(Locale.US, "x %.2f m, y %.2f m", measurement.xMeters, measurement.yMeters) + "."
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                ) {
+                                    val points = courtCorners.map {
+                                        androidx.compose.ui.geometry.Offset(it.first * size.width, it.second * size.height)
+                                    }
+                                    for (index in 0 until points.lastIndex) {
+                                        drawLine(Color.Yellow, points[index], points[index + 1], strokeWidth = 4f)
+                                    }
+                                    if (points.size == 4) drawLine(Color.Yellow, points.last(), points.first(), strokeWidth = 4f)
+                                    points.forEach { drawCircle(Color.Yellow, radius = 7f, center = it) }
+                                }
+                            }
                             Text(
-                                text = "Frame ${bitmap.width} × ${bitmap.height} pixels",
-                                color = Muted,
+                                "Frame preview at " + formatDuration(frameTimestampMs) +
+                                    ". Tap the four outer court corners in order: far-left, far-right, near-right, near-left. These points are saved locally.",
+                                color = AppMuted,
                                 fontSize = 12.sp
                             )
                             OutlinedButton(
                                 onClick = {
-                                    val id = videoId
-                                    val timestamp = timestampText.toDoubleOrNull()
-                                    if (id != null && timestamp != null && timestamp >= 0) {
-                                        scope.launch {
-                                            busy = true
-                                            statusMessage = "Suggesting court corners..."
-                                            try {
-                                                val response = withContext(Dispatchers.IO) {
-                                                    api().detectCourt(id, timestamp)
-                                                }
-                                                val candidate = response.optJSONObject("candidate")
-                                                val points = candidate?.optJSONArray("image_points")
-                                                if (points != null && points.length() == 4) {
-                                                    calibrationPoints.clear()
-                                                    for (index in 0 until points.length()) {
-                                                        val point = points.optJSONArray(index)
-                                                        if (point != null && point.length() == 2) {
-                                                            calibrationPoints.add(
-                                                                point.optDouble(0).toFloat() to
-                                                                    point.optDouble(1).toFloat()
-                                                            )
-                                                        }
-                                                    }
-                                                    statusMessage = "Court suggestion loaded. Verify the corner order visually before saving."
-                                                } else {
-                                                    statusMessage = "No court candidate found. Select the four corners manually."
-                                                }
-                                            } catch (error: Exception) {
-                                                statusMessage = "Court detection failed: ${error.message}"
-                                            } finally {
-                                                busy = false
+                                    val bitmapForSuggestion = frameBitmap
+                                    val id = projectId
+                                    if (bitmapForSuggestion != null && id != null) scope.launch {
+                                        busy = true
+                                        try {
+                                            val suggestion = withContext(Dispatchers.Default) {
+                                                CourtCalibrationSuggester.suggest(bitmapForSuggestion)
                                             }
+                                            if (suggestion == null) {
+                                                message = "No usable green-court region was found in this frame. Tap the four corners manually."
+                                            } else {
+                                                courtCorners.clear()
+                                                courtCorners.addAll(suggestion)
+                                                withContext(Dispatchers.IO) {
+                                                    LocalProjectStore.setCourtCorners(context, id, suggestion)
+                                                }
+                                                message = "Approximate green-region corners suggested. Check the overlay and correct them before trusting any metre measurement."
+                                            }
+                                        } catch (error: Exception) {
+                                            message = "Court-corner suggestion failed: " + (error.message ?: "unknown error")
+                                        } finally {
+                                            busy = false
                                         }
                                     }
                                 },
                                 enabled = !busy && frameBitmap != null,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Suggest court corners automatically")
+                                Text("Suggest court corners from green region")
                             }
-                            FrameTapPreview(
-                                bitmap = bitmap,
-                                selectedPoints = calibrationPoints.toList(),
-                                selectedPlayerPoint = selectedPlayerPoint,
-                                onTap = { point ->
-                                    if (calibrationId == null) {
-                                        if (calibrationPoints.size < 4) {
-                                            calibrationPoints.add(point)
-                                            statusMessage = "Court corner ${calibrationPoints.size} of 4 selected."
+                            Text(
+                                "Suggestion is colour-based only. It is not automatic line recognition; verify all four points against the actual court.",
+                                color = AppMuted,
+                                fontSize = 11.sp
+                            )
+                        } else {
+                            Text("Frame preview is not available yet.", color = AppMuted, fontSize = 13.sp)
+                        }
+                        OutlinedTextField(
+                            value = timestampText,
+                            onValueChange = { timestampText = it },
+                            label = { Text("Preview time in seconds") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    val item = project
+                                    if (item != null) scope.launch {
+                                        val seconds = timestampText.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
+                                        val timeMs = (seconds * 1000.0).toLong().coerceAtMost(durationMs)
+                                        busy = true
+                                        try {
+                                            val preview = withContext(Dispatchers.IO) {
+                                                LocalVideoInspector.frameAt(
+                                                    context,
+                                                    Uri.parse(item.optString("content_uri")),
+                                                    timeMs
+                                                )
+                                            }
+                                            frameBitmap = preview
+                                            if (preview != null) frameTimestampMs = timeMs
+                                            message = "Frame preview updated."
+                                        } catch (error: Exception) {
+                                            message = "Frame extraction failed: " + (error.message ?: "unknown error")
+                                        } finally {
+                                            busy = false
                                         }
-                                    } else {
-                                        selectedPlayerPoint = point
-                                        statusMessage = "Player ground point selected."
+                                    }
+                                },
+                                enabled = !busy,
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Preview frame") }
+                            OutlinedButton(
+                                onClick = {
+                                    courtCorners.clear()
+                                    val id = projectId
+                                    if (id != null) scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            LocalProjectStore.setCourtCorners(context, id, emptyList())
+                                            LocalProjectStore.load(context, id)
+                                        }.also { project = it }
+                                        markPlayerPosition = false
+                                        message = "Court corners and measurements cleared."
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Clear corners") }
+                        }
+                        Text("Saved court corners: " + courtCorners.size + " / 4", color = AppMuted, fontSize = 12.sp)
+                        if (courtCorners.size == 4) {
+                            OutlinedButton(
+                                onClick = {
+                                    markPlayerPosition = !markPlayerPosition
+                                    markEventLocation = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (markPlayerPosition) "Cancel player-point tap" else "Mark player foot on this frame")
+                            }
+                            Text(
+                                if (markPlayerPosition) {
+                                    "Tap the midpoint between the player's feet / ground-contact point. The point will be projected into court metres."
+                                } else {
+                                    "After calibration, you can manually tap a player's ground point on the current frame."
+                                },
+                                color = if (markPlayerPosition) TennisGreen else AppMuted,
+                                fontSize = 12.sp
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    markEventLocation = !markEventLocation
+                                    markPlayerPosition = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (markEventLocation) "Cancel event-location tap" else "Mark serve / shot location on this frame")
+                            }
+                            if (markEventLocation) {
+                                Text(
+                                    "The next tap records the event type shown in the event-review section below at this timestamp and saves its court x/y metres. Use this for a manually identified serve or shot landing point; it is not automatically detected.",
+                                    color = TennisGreen,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        Text("Saved manual positions: " + manualPositionCount, color = AppMuted, fontSize = 12.sp)
+                        latestManualPosition?.let { position ->
+                            val signedDistance = position.optDouble("baseline_distance_m")
+                            Text(
+                                "Latest: " + position.optString("player_end") +
+                                    " half · x " + String.format(Locale.US, "%.2f m", position.optDouble("court_x_m")) +
+                                    " · y " + String.format(Locale.US, "%.2f m", position.optDouble("court_y_m")) +
+                                    " · baseline " + String.format(Locale.US, "%+.2f m", signedDistance),
+                                color = AppInk,
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                if (signedDistance >= 0.0) "Player point is behind the baseline." else "Player point is inside the baseline.",
+                                color = AppMuted,
+                                fontSize = 11.sp
+                            )
+                            OutlinedButton(
+                                onClick = { positionsCsvExporter.launch("tennis-video-manual-positions.csv") },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Export manual court positions as CSV") }
+                        }
+                    }
+                }
+
+                Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("3 · Source video playback", fontWeight = FontWeight.Bold, color = AppInk)
+                        Text(
+                            "Play or seek the original match video. Pause at a moment and use its exact timestamp for a manual event or location mark.",
+                            color = AppMuted,
+                            fontSize = 12.sp
+                        )
+                        OutlinedButton(
+                            onClick = { showVideoPlayback = !showVideoPlayback },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (showVideoPlayback) "Hide source video player" else "Open source video player")
+                        }
+                        if (showVideoPlayback) {
+                            VideoPlaybackCard(
+                                uri = Uri.parse(project?.optString("content_uri").orEmpty()),
+                                onPauseAt = { timeMs ->
+                                    val item = project
+                                    if (item != null) scope.launch {
+                                        timestampText = String.format(Locale.US, "%.1f", timeMs / 1000.0)
+                                        frameTimestampMs = timeMs.coerceIn(0L, durationMs)
+                                        try {
+                                            frameBitmap = withContext(Dispatchers.IO) {
+                                                LocalVideoInspector.frameAt(
+                                                    context,
+                                                    Uri.parse(item.optString("content_uri")),
+                                                    frameTimestampMs
+                                                )
+                                            }
+                                            message = "Source video paused at " + formatDuration(frameTimestampMs) +
+                                                ". The frame preview and manual event tools now use this timestamp."
+                                        } catch (error: Exception) {
+                                            message = "Could not capture paused frame: " + (error.message ?: "unknown error")
+                                        }
                                     }
                                 }
                             )
@@ -711,709 +1041,548 @@ private fun TennisVideoApp() {
                     }
                 }
 
-                if (frameBitmap != null) {
-                    GlassCard(shape = RoundedCornerShape(16.dp)) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            SectionHeading("4", "Calibrate the court")
-                            if (calibrationId == null) {
-                                Text(
-                                    text = "Tap four outer court corners in this exact order:",
-                                    color = Muted,
-                                    fontSize = 13.sp
-                                )
-                                Text(
-                                    text = "1 Far-left  →  2 Far-right  →  3 Near-right  →  4 Near-left",
-                                    color = Ink,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 13.sp
-                                )
-                                Text(
-                                    text = "${calibrationPoints.size} / 4 corners selected",
-                                    color = CourtGreen,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            calibrationPoints.clear()
-                                            statusMessage = "Corner selections cleared."
-                                        },
-                                        enabled = calibrationPoints.isNotEmpty() && !busy,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text("Clear taps")
-                                    }
-                                    Button(
-                                        onClick = {
-                                            val id = videoId
-                                            if (id != null && calibrationPoints.size == 4) {
-                                                scope.launch {
-                                                    busy = true
-                                                    statusMessage = "Saving manual court calibration..."
-                                                    try {
-                                                        val timestamp = timestampText.toDouble()
-                                                        val response = withContext(Dispatchers.IO) {
-                                                            api().createCalibration(
-                                                                id,
-                                                                timestamp,
-                                                                calibrationPoints.toList()
-                                                            )
-                                                        }
-                                                        calibrationId = response.getString("calibration_id")
-                                                        selectedPlayerPoint = null
-                                                        statusMessage = "Calibration saved. Tap a player's feet / ground-contact point."
-                                                    } catch (error: Exception) {
-                                                        statusMessage = "Calibration failed: ${error.message}"
-                                                    } finally {
-                                                        busy = false
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        enabled = calibrationPoints.size == 4 && !busy,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text("Save calibration")
-                                    }
-                                }
-                            } else {
-                                Text("Calibration ID: $calibrationId", color = CourtGreen, fontSize = 12.sp)
-                                Text(
-                                    "Tap the midpoint between the player's feet (ground-contact point), not their torso.",
-                                    color = Muted,
-                                    fontSize = 13.sp
-                                )
-                                Text(
-                                    if (selectedPlayerPoint == null) {
-                                        "No player point selected."
-                                    } else {
-                                        "Selected image point: (${selectedPlayerPoint!!.first.toInt()}, ${selectedPlayerPoint!!.second.toInt()}) px"
-                                    },
-                                    color = Ink,
-                                    fontSize = 13.sp
-                                )
-                                Text("Which end of the court is this player on?", color = Muted, fontSize = 13.sp)
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    RadioButton(
-                                        selected = playerEnd == "near",
-                                        onClick = { playerEnd = "near" }
-                                    )
-                                    Text("Near baseline")
-                                    Spacer(Modifier.width(12.dp))
-                                    RadioButton(
-                                        selected = playerEnd == "far",
-                                        onClick = { playerEnd = "far" }
-                                    )
-                                    Text("Far baseline")
-                                }
-                                Button(
-                                    onClick = {
-                                        val id = videoId
-                                        val calibration = calibrationId
-                                        val point = selectedPlayerPoint
-                                        if (id != null && calibration != null && point != null) {
-                                            scope.launch {
-                                                busy = true
-                                                statusMessage = "Projecting point into court coordinates..."
-                                                try {
-                                                    val response = withContext(Dispatchers.IO) {
-                                                        api().projectPoint(id, calibration, point, playerEnd)
-                                                    }
-                                                    val distance = response.getDouble("signed_baseline_distance_m")
-                                                    val feet = distance * 3.28084
-                                                    val relation = when {
-                                                        distance > 0.01 -> "behind the baseline"
-                                                        distance < -0.01 -> "inside the baseline"
-                                                        else -> "on the baseline"
-                                                    }
-                                                    measurementSummary = String.format(
-                                                        Locale.US,
-                                                        "%+.2f m (%+.2f ft) %s",
-                                                        distance,
-                                                        feet,
-                                                        relation
-                                                    )
-                                                    statusMessage = "Point projected using manual court calibration."
-                                                } catch (error: Exception) {
-                                                    statusMessage = "Projection failed: ${error.message}"
-                                                } finally {
-                                                    busy = false
-                                                }
-                                            }
-                                        }
-                                    },
-                                    enabled = selectedPlayerPoint != null && !busy,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("Measure baseline distance")
-                                }
-                                Text("Last measurement", color = Muted, fontSize = 12.sp)
-                                Text(
-                                    measurementSummary,
-                                    fontSize = 21.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = CourtGreen
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-
-            if (videoId != null) {
-                GlassCard(shape = RoundedCornerShape(16.dp)) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        SectionHeading("5", "Automatic match analysis")
+                Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("3 · Analyse on this phone", fontWeight = FontWeight.Bold, color = AppInk)
                         Text(
-                            "Run court, player-position and tennis-ball candidate detection on the uploaded match. A verified manual calibration is recommended.",
-                            color = Muted,
+                            "The app runs MediaPipe Pose Landmarker on video frames to propose up to two player poses and TrackNet V1 to propose tennis-ball locations on a 5 fps sampling grid. Player feet can be projected into court metres only after you calibrate the four corners. Candidate contacts or trajectory changes remain unconfirmed until you review them.",
+                            color = AppMuted,
                             fontSize = 12.sp
                         )
                         Button(
                             onClick = {
-                                scope.launch {
+                                val id = projectId
+                                if (id != null) scope.launch {
                                     busy = true
-                                    statusMessage = "Starting automatic analysis..."
                                     try {
-                                        val response = withContext(Dispatchers.IO) {
-                                            api().startAnalysis(videoId!!, calibrationId)
+                                        withContext(Dispatchers.IO) {
+                                            LocalProjectStore.prepareAnalysis(context, id)
                                         }
-                                        analysisId = response.getString("analysis_id")
-                                        analysisStatus = response.optString("status", "queued")
-                                        analysisProgress = response.optInt("progress_pct", 0)
-                                        analysisSummary = null
-                                        eventCandidates.clear()
-                                        statusMessage = "Analysis queued. Refresh for progress."
+                                        val request = OneTimeWorkRequestBuilder<LocalAnalysisWorker>()
+                                            .setInputData(
+                                                workDataOf(
+                                                    LocalAnalysisWorker.KEY_PROJECT_ID to id,
+                                                    LocalAnalysisWorker.KEY_START_MS to 0L
+                                                )
+                                            )
+                                            .addTag(LocalAnalysisWorker.tag(id))
+                                            .build()
+                                        WorkManager.getInstance(context).enqueueUniqueWork(
+                                            LocalAnalysisWorker.workName(id, 0L),
+                                            ExistingWorkPolicy.KEEP,
+                                            request
+                                        )
+                                        project = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+                                        message = "On-device analysis queued. Android can continue the saved work after you leave the app."
                                     } catch (error: Exception) {
-                                        statusMessage = "Could not start analysis: ${error.message}"
+                                        message = "Could not start local analysis: " + (error.message ?: "unknown error")
                                     } finally {
                                         busy = false
                                     }
                                 }
                             },
-                            enabled = !busy,
+                            enabled = !busy && status != "queued" && status != "processing" && durationMs > 0L,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Start a new analysis")
+                            Text(if (status == "completed") "Run analysis again" else "Start on-device analysis")
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(analysisStatus, color = Ink, fontWeight = FontWeight.SemiBold)
-                            Text("$analysisProgress%", color = CourtGreen, fontWeight = FontWeight.Bold)
-                            OutlinedButton(onClick = { refreshAnalysis() }, enabled = !busy) {
-                                Text("Refresh")
-                            }
+                        if (status == "queued" || status == "processing") {
+                            LinearProgressIndicator(
+                                progress = (progress / 100f).coerceIn(0f, 1f),
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
-                        analysisSummary?.let { summary ->
-                            val players = summary.optJSONObject("players") ?: JSONObject()
-                            val near = players.optJSONObject("near_player") ?: JSONObject()
-                            val far = players.optJSONObject("far_player") ?: JSONObject()
-                            Text("Baseline positioning (metres)", color = Ink, fontWeight = FontWeight.Bold)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                PlayerMetric("Near player", near)
-                                PlayerMetric("Far player", far)
+                        Text(
+                            "Status: " + status.replace('_', ' ') + " · " + progress + "%",
+                            color = AppInk,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        if (sampleCount > 0) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                MetricValue("Frames sampled", sampleCount.toString())
+                                MetricValue("Players now", latestPlayers.length().toString())
+                                MetricValue("Ball detections", String.format(Locale.US, "%.1f%%", ballDetectionRate))
                             }
-                            val calibration = summary.optJSONObject("calibration") ?: JSONObject()
-                            Text(
-                                "Court calibration: ${calibration.optString("mode", "unknown")}" +
-                                    if (calibration.optBoolean("requires_confirmation", true)) " · confirm required" else "",
-                                color = Muted,
-                                fontSize = 11.sp
-                            )
-                            Text(
-                                "Player-detection coverage: ${String.format(Locale.US, "%.1f%%", summary.optDouble("player_detection_coverage_pct", 0.0))} · " +
-                                    "Ball candidates: ${summary.optInt("ball_candidates")}",
-                                color = Muted,
-                                fontSize = 12.sp
-                            )
-                            val heatmaps = summary.optJSONObject("position_heatmaps")
-                            if (heatmaps != null) {
-                                Text("Position heatmaps", color = Ink, fontWeight = FontWeight.Bold)
-                                CourtHeatmap(parseGrid(heatmaps.optJSONArray("near_player")))
-                                Text("Near player", color = Muted, fontSize = 10.sp)
-                                CourtHeatmap(parseGrid(heatmaps.optJSONArray("far_player")))
-                                Text("Far player", color = Muted, fontSize = 10.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                MetricValue("Green coverage", String.format(Locale.US, "%.1f%%", averageGreen))
+                                MetricValue("Motion signal", String.format(Locale.US, "%.1f%%", averageMotion))
+                                MetricValue("Recent frames", recentSampleCount.toString())
                             }
-                            val reviewed = summary.optJSONObject("reviewed_metrics") ?: JSONObject()
-                            val serves = reviewed.optJSONObject("serve_placement") ?: JSONObject()
-                            val shots = reviewed.optJSONObject("shot_placement") ?: JSONObject()
-                            val rallies = reviewed.optJSONObject("rally_length") ?: JSONObject()
-                            val winnerError = reviewed.optJSONObject("winner_error_classification") ?: JSONObject()
                             Text(
-                                "Reviewed serves: ${serves.optInt("confirmed_serves")} · " +
-                                    "Reviewed bounces: ${shots.optInt("confirmed_bounces")}",
-                                color = Ink,
-                                fontSize = 12.sp
-                            )
-                            Text(
-                                "First / second serves: ${serves.optInt("first_serve_events")} / ${serves.optInt("second_serve_events")} · " +
-                                    "Serve-in rate: ${if (serves.isNull("serve_in_percentage")) "N/A" else String.format(Locale.US, "%.1f%%", serves.optDouble("serve_in_percentage"))}",
-                                color = Muted,
-                                fontSize = 11.sp
-                            )
-                            val serveZones = serves.optJSONObject("zones") ?: JSONObject()
-                            val shotDepths = shots.optJSONObject("depths") ?: JSONObject()
-                            Text(
-                                "Serve zones T / body / wide: ${serveZones.optInt("T")} / ${serveZones.optInt("body")} / ${serveZones.optInt("wide")}",
-                                color = Muted,
-                                fontSize = 11.sp
-                            )
-                            Text(
-                                "Shot depth short / mid / deep: ${shotDepths.optInt("short")} / ${shotDepths.optInt("mid_court")} / ${shotDepths.optInt("deep")}",
-                                color = Muted,
-                                fontSize = 11.sp
-                            )
-                            Text(
-                                "Completed points: ${rallies.optInt("completed_points")} · " +
-                                    "Incomplete: ${rallies.optInt("incomplete_points")} · " +
-                                    "Mean contacts: ${if (rallies.isNull("average_contacts_per_point")) "N/A" else String.format(Locale.US, "%.1f", rallies.optDouble("average_contacts_per_point"))}",
-                                color = Muted,
-                                fontSize = 11.sp
-                            )
-                            Text(
-                                "Winners / forced / unforced errors: ${winnerError.optInt("winners")} / " +
-                                    "${winnerError.optInt("forced_errors")} / ${winnerError.optInt("unforced_errors")}",
-                                color = Muted,
+                                "Pose and ball detections are model proposals. Camera cuts, zooms, occlusions and low frame rates can break tracks; automatic tactical events are not confirmed statistics.",
+                                color = AppMuted,
                                 fontSize = 11.sp
                             )
                             OutlinedButton(
-                                onClick = {
-                                    val id = analysisId
-                                    if (id != null) {
-                                        scope.launch {
-                                            busy = true
-                                            try {
-                                                reportBytes = withContext(Dispatchers.IO) {
-                                                    api().getAnalysisReportSvg(id)
-                                                }
-                                                reportSaver.launch("tennis-match-report.svg")
-                                            } catch (error: Exception) {
-                                                statusMessage = "Report export failed: ${error.message}"
-                                            } finally {
-                                                busy = false
-                                            }
-                                        }
-                                    }
-                                },
-                                enabled = analysisStatus == "completed" && !busy,
+                                onClick = { csvExporter.launch("tennis-video-analysis-timeline.csv") },
                                 modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Save SVG court report")
-                            }
-
+                            ) { Text("Export full analysis timeline as CSV") }
                             OutlinedButton(
-                                onClick = {
-                                    val id = analysisId
-                                    if (id != null) {
-                                        scope.launch {
-                                            busy = true
-                                            try {
-                                                reportBytes = withContext(Dispatchers.IO) { api().getAnalysisReportPng(id) }
-                                                reportPngSaver.launch("tennis-match-report.png")
-                                            } catch (error: Exception) {
-                                                statusMessage = "PNG export failed: ${error.message}"
-                                            } finally {
-                                                busy = false
-                                            }
-                                        }
-                                    }
-                                },
-                                enabled = analysisStatus == "completed" && !busy,
+                                onClick = { eventsCsvExporter.launch("tennis-video-event-review.csv") },
                                 modifier = Modifier.fillMaxWidth()
-                            ) { Text("Save PNG report") }
-                            OutlinedButton(
-                                onClick = {
-                                    val id = analysisId
-                                    if (id != null) {
-                                        scope.launch {
-                                            busy = true
-                                            try {
-                                                reportBytes = withContext(Dispatchers.IO) { api().getAnalysisReportPdf(id) }
-                                                reportPdfSaver.launch("tennis-match-report.pdf")
-                                            } catch (error: Exception) {
-                                                statusMessage = "PDF export failed: ${error.message}"
-                                            } finally {
-                                                busy = false
-                                            }
-                                        }
-                                    }
-                                },
-                                enabled = analysisStatus == "completed" && !busy,
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Save PDF report") }
+                            ) { Text("Export event candidates and reviews as CSV") }
+                        }
+                        if (status == "failed") {
+                            Text(project?.optString("analysis_error", "Analysis failed") ?: "Analysis failed", color = Color(0xFFB3261E))
                         }
                     }
                 }
             }
 
-            if (analysisId != null && analysisStatus == "completed") {
-                GlassCard(shape = RoundedCornerShape(16.dp)) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        SectionHeading("6", "Review event candidates")
+            if (hasCalibratedPlayers) {
+                Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("4 · Live mini-court", fontWeight = FontWeight.Bold, color = AppInk)
                         Text(
-                            "Only human-accepted, explicitly labelled events contribute to serve, shot, rally and winner/error statistics.",
-                            color = Muted,
+                            "Latest calibrated player positions. The manual homography assumes the camera view has not panned, zoomed or cut since calibration.",
+                            color = AppMuted,
                             fontSize = 12.sp
                         )
-                        if (eventCandidates.isEmpty()) {
-                            Text("No trajectory-change candidates were detected in this video.", color = Muted, fontSize = 12.sp)
-                        }
-                        eventCandidates.take(12).forEach { event ->
-                            GlassCard(shape = RoundedCornerShape(10.dp)) {
-                                Column(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        "${event.optString("event_type")} · ${String.format(Locale.US, "%.2f s", event.optDouble("timestamp_seconds"))}",
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Ink,
-                                        fontSize = 12.sp
-                                    )
-                                    Text(
-                                        "Automatic candidate only. Check the video before accepting.",
-                                        color = Muted,
-                                        fontSize = 10.sp
-                                    )
-                                    OutlinedButton(
-                                        onClick = {
-                                            val timestamp = event.optDouble("timestamp_seconds", 0.0)
-                                            scope.launch {
-                                                busy = true
-                                                try {
-                                                    timestampText = String.format(Locale.US, "%.2f", timestamp)
-                                                    frameBitmap = withContext(Dispatchers.IO) {
-                                                        api().getFrame(videoId!!, timestamp)
-                                                    }
-                                                    statusMessage = "Loaded event frame at $timestampText seconds."
-                                                } catch (error: Exception) {
-                                                    statusMessage = "Could not load event frame: ${error.message}"
-                                                } finally {
-                                                    busy = false
-                                                }
-                                            }
-                                        },
-                                        enabled = !busy,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text("Preview event frame")
-                                    }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        OutlinedButton(onClick = { reviewCandidate(event, "serve_bounce") }, enabled = !busy) { Text("Serve") }
-                                        OutlinedButton(onClick = { reviewCandidate(event, "shot_bounce") }, enabled = !busy) { Text("Bounce") }
-                                        OutlinedButton(onClick = { reviewCandidate(event, "racket_contact") }, enabled = !busy) { Text("Contact") }
-                                        OutlinedButton(onClick = { reviewCandidate(event, null) }, enabled = !busy) { Text("Reject") }
-                                    }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        OutlinedButton(onClick = { reviewCandidate(event, "winner") }, enabled = !busy) { Text("Winner") }
-                                        OutlinedButton(onClick = { reviewCandidate(event, "forced_error") }, enabled = !busy) { Text("Forced error") }
-                                        OutlinedButton(onClick = { reviewCandidate(event, "unforced_error") }, enabled = !busy) { Text("Unforced error") }
-                                    }
-                                }
-                            }
+                        CourtMiniMap(players = latestPlayers, samples = sampleArray)
+                        for (index in 0 until latestPlayers.length()) {
+                            val player = latestPlayers.optJSONObject(index) ?: continue
+                            if (!player.has("court_x_m")) continue
+                            Text(
+                                player.optString("player_id") + " · " +
+                                    String.format(Locale.US, "x %.2f m, y %.2f m · baseline %+.2f m",
+                                        player.optDouble("court_x_m"),
+                                        player.optDouble("court_y_m"),
+                                        player.optDouble("baseline_distance_m")),
+                                color = AppInk,
+                                fontSize = 12.sp
+                            )
                         }
                     }
                 }
             }
 
-            if (analysisId != null && analysisStatus == "completed") {
-                GlassCard(shape = RoundedCornerShape(16.dp)) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text("Add a manually confirmed event", color = Ink, fontWeight = FontWeight.Bold)
-                        OutlinedTextField(
-                            value = manualEventTimestamp,
-                            onValueChange = { manualEventTimestamp = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Event timestamp (seconds)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = manualEventType,
-                            onValueChange = { manualEventType = it.trim() },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Event type") },
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = manualServeNumber,
-                            onValueChange = { manualServeNumber = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Serve number (1 or 2, optional)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = manualServeResult,
-                            onValueChange = { manualServeResult = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Serve result (in/fault/ace/double_fault/let)") },
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = manualShotDepth,
-                            onValueChange = { manualShotDepth = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Shot depth (short/mid_court/deep)") },
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = manualShotDirection,
-                            onValueChange = { manualShotDirection = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Shot direction (crosscourt/down_the_line/middle)") },
-                            singleLine = true
-                        )
-                        Text(
-                            "Types also include serve_attempt. Optional metadata is validated by the backend.",
-                            color = Muted,
-                            fontSize = 10.sp
-                        )
-                        Button(
-                            onClick = {
-                                val id = analysisId
-                                val timestamp = manualEventTimestamp.toDoubleOrNull()
-                                val type = manualEventType.trim()
-                                if (id == null || timestamp == null || timestamp < 0 || type.isBlank()) {
-                                    statusMessage = "Enter a valid timestamp and event type."
-                                } else {
-                                    scope.launch {
+            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("5 · Event review", fontWeight = FontWeight.Bold, color = AppInk)
+                    Text(
+                        "$reviewableEventCount candidate event(s) require review. These are not official or confirmed tennis events.",
+                        color = AppMuted,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        "Edit the event-type field below before accepting a candidate to relabel it. The app saves the corrected label as user-reviewed.",
+                        color = AppMuted,
+                        fontSize = 11.sp
+                    )
+                    val firstEvent = (eventCount - 12).coerceAtLeast(0)
+                    for (index in firstEvent until eventCount) {
+                        val event = eventArray.optJSONObject(index) ?: continue
+                        val eventId = event.optString("event_id")
+                        val eventStatus = event.optString("review_status", "needs_review")
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                formatDuration(event.optLong("timestamp_ms")) + " · " +
+                                    event.optString("event_type").replace('_', ' '),
+                                color = AppInk,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                "Confidence " + String.format(Locale.US, "%.0f%%", event.optDouble("confidence") * 100.0) +
+                                    " · " + eventStatus.replace('_', ' '),
+                                color = AppMuted,
+                                fontSize = 11.sp
+                            )
+                            Text(event.optString("note"), color = AppMuted, fontSize = 11.sp)
+                            OutlinedButton(
+                                onClick = {
+                                    val item = project
+                                    if (item != null) scope.launch {
+                                        val time = event.optLong("timestamp_ms").coerceIn(0L, durationMs)
                                         busy = true
-                                        statusMessage = "Saving manual event..."
                                         try {
-                                            withContext(Dispatchers.IO) {
-                                                api().createManualEvent(
-                                                    id,
-                                                    timestamp,
-                                                    type,
-                                                    playerEnd + "_player",
-                                                    "Manually confirmed from the video review.",
-                                                    manualServeNumber.toIntOrNull()?.takeIf { it == 1 || it == 2 },
-                                                    manualServeResult.trim().ifBlank { null },
-                                                    manualShotDepth.trim().ifBlank { null },
-                                                    manualShotDirection.trim().ifBlank { null }
+                                            val frame = withContext(Dispatchers.IO) {
+                                                LocalVideoInspector.frameAt(
+                                                    context,
+                                                    Uri.parse(item.optString("content_uri")),
+                                                    time
                                                 )
                                             }
-                                            refreshAnalysis()
-                                            statusMessage = "Manual event saved as confirmed."
+                                            if (frame != null) {
+                                                frameTimestampMs = time
+                                                timestampText = String.format(Locale.US, "%.1f", time / 1000.0)
+                                                frameBitmap = frame
+                                                showVideoPlayback = false
+                                                message = "Opened event frame at " + formatDuration(time) +
+                                                    ". Review the ball/player overlay and correct the event label if needed."
+                                            } else {
+                                                message = "Could not decode the source frame at this event timestamp."
+                                            }
                                         } catch (error: Exception) {
-                                            statusMessage = "Manual event failed: ${error.message}"
+                                            message = "Could not open event frame: " + (error.message ?: "unknown error")
+                                        } finally {
                                             busy = false
                                         }
                                     }
+                                },
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("View source frame at this event") }
+                            if (eventStatus == "needs_review") {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            val id = projectId
+                                            if (id != null) scope.launch {
+                                                withContext(Dispatchers.IO) {
+                                                    LocalProjectStore.reviewEvent(context, id, eventId, true, manualEventType.trim())
+                                                    LocalProjectStore.load(context, id)
+                                                }.also { project = it }
+                                                message = "Candidate accepted as a reviewed event. Verify its type before using the metric."
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Accept") }
+                                    OutlinedButton(
+                                        onClick = {
+                                            val id = projectId
+                                            if (id != null) scope.launch {
+                                                withContext(Dispatchers.IO) {
+                                                    LocalProjectStore.reviewEvent(context, id, eventId, false)
+                                                    LocalProjectStore.load(context, id)
+                                                }.also { project = it }
+                                                message = "Candidate rejected."
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Reject") }
                                 }
-                            },
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Add confirmed event")
+                            }
                         }
                     }
+                    OutlinedTextField(
+                        value = manualEventType,
+                        onValueChange = { manualEventType = it },
+                        label = { Text("Manual event type") },
+                        supportingText = { Text("Example: serve, return, forehand, backhand, volley, bounce, point_start, point_end, winner, unforced_error.") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = manualEventNote,
+                        onValueChange = { manualEventNote = it },
+                        label = { Text("Review note (optional)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            val id = projectId
+                            val timestampMs = ((timestampText.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0) * 1000.0).toLong()
+                                .coerceAtMost(durationMs)
+                            if (id != null && manualEventType.isNotBlank()) scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    LocalProjectStore.addManualEvent(
+                                        context,
+                                        id,
+                                        timestampMs,
+                                        manualEventType.trim(),
+                                        manualEventNote.trim()
+                                    )
+                                    LocalProjectStore.load(context, id)
+                                }.also { project = it }
+                                manualEventNote = ""
+                                message = "Manual event saved as reviewed."
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Add manual event at selected timestamp") }
                 }
             }
 
-            GlassCard(shape = RoundedCornerShape(16.dp)) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (busy) CircularProgressIndicator(modifier = Modifier.height(22.dp).width(22.dp))
-                    Column {
-                        Text("Activity", fontWeight = FontWeight.Bold, color = Ink)
-                        Text(statusMessage, color = Muted, fontSize = 13.sp)
+            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("6 · Export visual report", fontWeight = FontWeight.Bold, color = AppInk)
+                    Text(
+                        "Create a court infographic using calibrated player trails, ball detections and manually reviewed event locations. Empty or uncalibrated observations are omitted instead of guessed.",
+                        color = AppMuted,
+                        fontSize = 12.sp
+                    )
+                    OutlinedButton(
+                        onClick = { reportSvgSaver.launch("tennis-video-court-report.svg") },
+                        enabled = project != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Export editable SVG infographic") }
+                    OutlinedButton(
+                        onClick = { reportPngSaver.launch("tennis-video-court-report.png") },
+                        enabled = project != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Export PNG infographic") }
+                    OutlinedButton(
+                        onClick = { reportPdfSaver.launch("tennis-video-analysis-report.pdf") },
+                        enabled = project != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Export PDF report") }
+                }
+            }
+
+            if (project != null) {
+                Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("7 · Local project storage", fontWeight = FontWeight.Bold, color = AppInk)
+                        Text(
+                            "Delete this project's private analysis data and any direct-link copy downloaded into the app. An original video selected from phone storage is left untouched.",
+                            color = AppMuted,
+                            fontSize = 12.sp
+                        )
+                        OutlinedButton(
+                            onClick = { showDeleteConfirmation = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Delete local project and downloaded copy") }
                     }
                 }
             }
 
-            Text(
-                text = "Reliability note: generic HOG and colour-blob detections are unverified candidates, not validated tennis-specific models. Confirm court calibration and event labels before using statistics.",
-                color = Muted,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(bottom = 20.dp)
-            )
+            if (showDeleteConfirmation) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteConfirmation = false },
+                    title = { Text("Delete this local project?") },
+                    text = {
+                        Text("The app will delete its project metadata, sample timeline, event reviews and any video copy downloaded through a direct HTTPS link. It will not delete an original video selected from your phone's storage.")
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val id = projectId
+                                showDeleteConfirmation = false
+                                if (id != null) scope.launch {
+                                    WorkManager.getInstance(context).cancelAllWorkByTag(
+                                        LocalAnalysisWorker.tag(id)
+                                    )
+                                    val deleted = withContext(Dispatchers.IO) {
+                                        LocalProjectStore.delete(context, id)
+                                    }
+                                    if (deleted) {
+                                        project = null
+                                        frameBitmap = null
+                                        courtCorners.clear()
+                                        refreshProjectLibrary()
+                                        markPlayerPosition = false
+                                        markEventLocation = false
+                                        message = "Local project data and downloaded copy deleted. Original selected videos remain untouched."
+                                    } else {
+                                        message = "Project data was not found."
+                                    }
+                                }
+                            }
+                        ) { Text("Delete") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteConfirmation = false }) { Text("Cancel") }
+                    }
+                )
             }
+
+            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Privacy and current limits", fontWeight = FontWeight.Bold, color = AppInk)
+                    Text(
+                        "Videos are processed on this phone and are not uploaded. Pose and TrackNet model files are downloaded during the CI build from their published model sources and packaged in the APK. The installed app does not need a network connection for analysis. Project metadata and measurements stay in app-private storage.",
+                        color = AppMuted,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        "Player poses and ball locations are automatic model proposals, not a validated identity or ball-tracking system. Player court metres depend on a correct four-corner calibration and a fixed camera. The event detector only flags possible direction changes or contact candidates; review/confirm event labels before counting serves, returns, winners or errors. No automatic court-line detector or camera-pan compensation is implemented yet.",
+                        color = AppMuted,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            if (busy) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.width(18.dp).height(18.dp), strokeWidth = 2.dp)
+                    Text("Working...", color = AppMuted, fontSize = 12.sp)
+                }
+            }
+            Text(message, color = AppMuted, fontSize = 12.sp)
+            Spacer(Modifier.height(12.dp))
         }
     }
 }
 
-
 @Composable
-private fun PlayerMetric(title: String, player: JSONObject) {
-    GlassCard(modifier = Modifier.width(155.dp), shape = RoundedCornerShape(12.dp)) {
-        Column(
-            modifier = Modifier.padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+private fun VideoPlaybackCard(
+    uri: Uri,
+    onPauseAt: (Long) -> Unit
+) {
+    val context = LocalContext.current
+    val videoView = remember(uri) {
+        VideoView(context).apply {
+            setVideoURI(uri)
+            val controller = MediaController(context)
+            controller.setAnchorView(this)
+            setMediaController(controller)
+        }
+    }
+    var playing by remember(uri) { mutableStateOf(false) }
+
+    DisposableEffect(videoView) {
+        onDispose {
+            runCatching { videoView.stopPlayback() }
+        }
+    }
+
+    AndroidView(
+        factory = { videoView },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(230.dp),
+        update = { view ->
+            if (view.tag != uri.toString()) {
+                view.tag = uri.toString()
+                view.setVideoURI(uri)
+            }
+        }
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            onClick = {
+                if (videoView.isPlaying) {
+                    videoView.pause()
+                    playing = false
+                } else {
+                    videoView.start()
+                    playing = true
+                }
+            },
+            modifier = Modifier.weight(1f)
         ) {
-            Text(title, color = Muted, fontSize = 11.sp)
-            val value = player.opt("average_baseline_distance_m")
-            val text = if (value == null || value == JSONObject.NULL) {
-                "N/A"
-            } else {
-                String.format(Locale.US, "%+.2f m", player.optDouble("average_baseline_distance_m"))
-            }
-            Text(text, color = CourtGreen, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "Behind: ${String.format(Locale.US, "%.0f%%", player.optDouble("behind_baseline_pct", 0.0))}",
-                color = Ink,
-                fontSize = 11.sp
-            )
-            Text("Samples: ${player.optInt("samples")}", color = Muted, fontSize = 10.sp)
+            Text(if (playing) "Pause" else "Play")
         }
-    }
-}
-
-private fun parseGrid(array: JSONArray?): List<List<Int>> {
-    if (array == null) return emptyList()
-    return buildList {
-        for (rowIndex in 0 until array.length()) {
-            val row = array.optJSONArray(rowIndex) ?: continue
-            add(buildList {
-                for (columnIndex in 0 until row.length()) add(row.optInt(columnIndex))
-            })
+        Button(
+            onClick = {
+                videoView.pause()
+                playing = false
+                onPauseAt(videoView.currentPosition.toLong())
+            },
+            modifier = Modifier.weight(1f)
+        ) {
+            Text("Use paused time")
         }
     }
 }
 
 @Composable
-private fun CourtHeatmap(grid: List<List<Int>>) {
+private fun CourtMiniMap(players: JSONArray, samples: JSONArray) {
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(170.dp)
+            .height(220.dp)
             .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF2B765B))
     ) {
-        drawRect(Color(0xFF167A5B))
-        if (grid.isNotEmpty()) {
-            val maximum = grid.flatten().maxOrNull()?.coerceAtLeast(1) ?: 1
-            val columns = grid.firstOrNull()?.size?.coerceAtLeast(1) ?: 1
-            val cellWidth = size.width / columns
-            val cellHeight = size.height / grid.size
-            grid.forEachIndexed { rowIndex, row ->
-                row.forEachIndexed { columnIndex, value ->
-                    if (value > 0) {
-                        drawRect(
-                            color = Color(0xFFFFD166).copy(
-                                alpha = (value.toFloat() / maximum).coerceIn(0.15f, 0.85f)
-                            ),
-                            topLeft = Offset(columnIndex * cellWidth, rowIndex * cellHeight),
-                            size = androidx.compose.ui.geometry.Size(cellWidth, cellHeight)
-                        )
-                    }
-                }
-            }
-        }
-        drawLine(Color.White, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 2.dp.toPx())
-        drawLine(Color.White.copy(alpha = 0.8f), Offset(size.width * 0.125f, 0f), Offset(size.width * 0.125f, size.height), 1.dp.toPx())
-        drawLine(Color.White.copy(alpha = 0.8f), Offset(size.width * 0.875f, 0f), Offset(size.width * 0.875f, size.height), 1.dp.toPx())
-        drawRect(Color.White, style = Stroke(2.dp.toPx()))
-    }
-}
+        val left = size.width * 0.18f
+        val right = size.width * 0.82f
+        val top = size.height * 0.07f
+        val bottom = size.height * 0.93f
+        val courtWidth = right - left
+        val courtHeight = bottom - top
+        fun mapX(value: Double) = (left + ((value + 5.485) / 10.97) * courtWidth).toFloat()
+        fun mapY(value: Double) = (top + ((value + 11.885) / 23.77) * courtHeight).toFloat()
+        fun playerColor(playerId: String) =
+            if (playerId == "P1") Color(0xFFFFD166) else Color(0xFF80D7FF)
 
-@Composable
-private fun SectionHeading(number: String, title: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(CourtGreen.copy(alpha = 0.12f))
-                .padding(horizontal = 9.dp, vertical = 5.dp)
-        ) {
-            Text(number, color = CourtGreen, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-        }
-        Spacer(Modifier.width(9.dp))
-        Text(title, fontWeight = FontWeight.Bold, color = Ink, fontSize = 17.sp)
-    }
-}
-
-@Composable
-private fun FrameTapPreview(
-    bitmap: Bitmap,
-    selectedPoints: List<Pair<Float, Float>>,
-    selectedPlayerPoint: Pair<Float, Float>?,
-    onTap: (Pair<Float, Float>) -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(230.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFFE6EAEC))
-            .pointerInput(bitmap, onTap) {
-                detectTapGestures { tap ->
-                    val containerWidth = size.width.toFloat()
-                    val containerHeight = size.height.toFloat()
-                    if (containerWidth > 0f && containerHeight > 0f) {
-                        val scale = min(
-                            containerWidth / bitmap.width.toFloat(),
-                            containerHeight / bitmap.height.toFloat()
-                        )
-                        val imageWidth = bitmap.width * scale
-                        val imageHeight = bitmap.height * scale
-                        val left = (containerWidth - imageWidth) / 2f
-                        val top = (containerHeight - imageHeight) / 2f
-                        val x = (tap.x - left) / scale
-                        val y = (tap.y - top) / scale
-                        if (x in 0f..bitmap.width.toFloat() && y in 0f..bitmap.height.toFloat()) {
-                            onTap(x to y)
-                        }
-                    }
-                }
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Image(
-            bitmap = bitmap.asImageBitmap(),
-            contentDescription = "Video frame. Tap to select a court corner or player position.",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize()
+        drawRect(
+            color = Color.White,
+            topLeft = Offset(left, top),
+            size = Size(courtWidth, courtHeight),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f)
         )
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val scale = min(
-                size.width / bitmap.width.toFloat(),
-                size.height / bitmap.height.toFloat()
-            )
-            val imageWidth = bitmap.width * scale
-            val imageHeight = bitmap.height * scale
-            val left = (size.width - imageWidth) / 2f
-            val top = (size.height - imageHeight) / 2f
+        val singlesLeft = mapX(-4.115)
+        val singlesRight = mapX(4.115)
+        drawLine(Color.White, Offset(singlesLeft, top), Offset(singlesLeft, bottom), strokeWidth = 2f)
+        drawLine(Color.White, Offset(singlesRight, top), Offset(singlesRight, bottom), strokeWidth = 2f)
+        val netY = mapY(0.0)
+        drawLine(Color.White, Offset(left, netY), Offset(right, netY), strokeWidth = 3f)
+        for (y in listOf(-6.4, 6.4)) {
+            val serviceY = mapY(y)
+            drawLine(Color.White, Offset(singlesLeft, serviceY), Offset(singlesRight, serviceY), strokeWidth = 2f)
+        }
+        drawLine(
+            Color.White,
+            Offset((singlesLeft + singlesRight) / 2f, mapY(-6.4)),
+            Offset((singlesLeft + singlesRight) / 2f, mapY(6.4)),
+            strokeWidth = 1.5f
+        )
 
-            selectedPoints.forEach { point ->
-                val center = Offset(left + point.first * scale, top + point.second * scale)
-                drawCircle(CourtGreen, radius = 8.dp.toPx(), center = center)
-                drawCircle(
-                    Color.White,
-                    radius = 8.dp.toPx(),
-                    center = center,
-                    style = Stroke(2.dp.toPx())
-                )
+        val previous = HashMap<String, Offset>()
+        for (sampleIndex in 0 until samples.length()) {
+            val sample = samples.optJSONObject(sampleIndex) ?: continue
+            val playerArray = sample.optJSONArray("players") ?: JSONArray()
+            for (index in 0 until playerArray.length()) {
+                val player = playerArray.optJSONObject(index) ?: continue
+                if (!player.has("court_x_m") || !player.has("court_y_m")) continue
+                val x = player.optDouble("court_x_m")
+                val y = player.optDouble("court_y_m")
+                if (x !in -5.485..5.485 || y !in -11.885..11.885) continue
+                val id = player.optString("player_id")
+                val point = Offset(mapX(x), mapY(y))
+                val color = playerColor(id)
+                drawCircle(color.copy(alpha = 0.11f), radius = 11f, center = point)
+                previous[id]?.let { last ->
+                    drawLine(
+                        color.copy(alpha = 0.48f),
+                        last,
+                        point,
+                        strokeWidth = 2.5f
+                    )
+                }
+                previous[id] = point
             }
-            selectedPlayerPoint?.let { point ->
-                val center = Offset(left + point.first * scale, top + point.second * scale)
-                drawCircle(Color.Red, radius = 9.dp.toPx(), center = center)
-                drawCircle(
-                    Color.White,
-                    radius = 9.dp.toPx(),
-                    center = center,
-                    style = Stroke(2.dp.toPx())
-                )
+            val ball = sample.optJSONObject("ball")
+            if (ball?.optBoolean("detected", false) == true &&
+                ball.has("court_x_m") && ball.has("court_y_m")
+            ) {
+                val x = ball.optDouble("court_x_m")
+                val y = ball.optDouble("court_y_m")
+                if (x in -5.485..5.485 && y in -11.885..11.885) {
+                    drawCircle(
+                        Color.Yellow.copy(alpha = 0.40f),
+                        radius = 5f,
+                        center = Offset(mapX(x), mapY(y))
+                    )
+                }
             }
         }
+
+        for (index in 0 until players.length()) {
+            val player = players.optJSONObject(index) ?: continue
+            if (!player.has("court_x_m") || !player.has("court_y_m")) continue
+            val x = player.optDouble("court_x_m")
+            val y = player.optDouble("court_y_m")
+            if (x !in -5.485..5.485 || y !in -11.885..11.885) continue
+            val point = Offset(mapX(x), mapY(y))
+            drawCircle(playerColor(player.optString("player_id")), 10f, point)
+            drawCircle(Color.White, 3f, point)
+        }
     }
+}
+
+@Composable
+private fun RowScope.MetricValue(label: String, value: String) {
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(value, color = AppInk, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text(label, color = AppMuted, fontSize = 10.sp)
+    }
+}
+
+private fun formatDuration(durationMs: Long): String {
+    val total = (durationMs / 1000L).coerceAtLeast(0L)
+    val hours = total / 3600L
+    val minutes = (total % 3600L) / 60L
+    val seconds = total % 60L
+    return if (hours > 0L) String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    else String.format(Locale.US, "%d:%02d", minutes, seconds)
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes < 0L) return "Size unavailable"
+    val value = bytes.toDouble() / (1024.0 * 1024.0)
+    return String.format(Locale.US, "%.1f MiB", value)
 }

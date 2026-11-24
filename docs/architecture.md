@@ -1,90 +1,88 @@
 # Architecture
 
-## System shape
+## Android application: offline analysis with optional direct-link ingress
+
+The Android app is the primary product execution path. A selected local video is accessed through Android's Storage Access Framework; an authorised direct HTTPS media URL can optionally be downloaded into private app storage by a resumable WorkManager job. The video itself is never uploaded to a backend.
 
 ```text
-Android (Kotlin / Jetpack Compose)
-        |
-        | HTTPS: upload, status, results, signed playback
-        v
-FastAPI control plane -------------------- PostgreSQL
-        |                                  users, videos, jobs,
-        | enqueue analysis job             events, metrics, versions
-        v
-Queue (Redis / managed queue)
-        |
-        v
-GPU analysis workers ------------------- Object storage
-        |                                  original clips, derived
-        |                                  frames and visual exports
-        v
-Versioned analysis pipeline
-  1. media probe / shot-boundary detection
-  2. court keypoints + homography
-  3. player detection + tracking
-  4. ball detection + tracking
-  5. hit / bounce / serve / point events
-  6. calibrated metrics + confidence
-        |
-        v
-Results API -> interactive dashboards, replay and infographic export
+Android / Jetpack Compose
+   |                         |
+   | local video URI         | optional direct HTTPS video URL
+   | persisted read grant    | WorkManager + HTTPS + Range resume
+   v                         v
+User-selected source    App-private downloaded media
+           \                 /
+            \               /
+             v             v
+       MediaMetadataRetriever
+          frame decode / preview
+                    |
+                    v
+         WorkManager 5-second chunks
+           (5 fps sampling grid)
+                    |
+          +---------+----------+
+          |                    |
+          v                    v
+ MediaPipe Pose Lite       TrackNet V1
+ up to 2 generic poses    tennis-ball heatmap
+          |                    |
+          v                    v
+ P1/P2 short-term         ball candidate points
+ nearest-foot association      |
+          |                    |
+          +---------+----------+
+                    |
+          manual court-corner calibration
+          + green-region corner suggestion
+                    |
+          4-point court homography
+                    |
+          court x/y metres + signed baseline
+                    |
+          +---------+----------+
+          |                    |
+          v                    v
+    Reviewable event      Local project store
+    trajectory heuristics   JSON + append-only NDJSON
+          |                    |
+          +---------+----------+
+                    |
+           mini-court / trails / heat dots
+           CSV + SVG / PNG / PDF exports
 ```
 
-The current code implements only the first local-development slice: FastAPI health and video upload to local disk. The other components are design targets, not existing functionality.
+## Inference and confidence
 
-## Coordinate system
+- Pose Landmarker Lite estimates up to two visible human body poses. It does not know which person is Player 1 or Player 2 by tennis identity. The app associates detections between adjacent samples using a nearest-foot-point heuristic, assigning temporary P1/P2 IDs.
+- TrackNet V1 consumes three consecutive 640 × 360 frames and produces a tennis-ball probability heatmap. The current Android path samples at 5 fps; pose inference runs on alternate samples (about 2.5 fps). This is a resource trade-off, not full-frame-rate tracking.
+- Ball and pose observations retain timestamps and confidence/proposal values. Missing observations remain missing.
+- Candidate events are derived from ball-path changes and wrist proximity. They are saved as `needs_review` and never treated as confirmed match events without user action.
+- The app can manually label events and save court locations. Manual labels and model candidates remain separate data sources.
 
-The implemented court-plane convention uses metres, with the origin at the centre of the net, the x-axis across the court width, and the y-axis along the court length. The near half is positive y and the far half is negative y. The baselines are therefore at +11.885 m and -11.885 m. Doubles boundaries are at x = ±5.485 m; singles sidelines are at x = ±4.115 m. The overall court length is 23.77 m, singles width is 8.23 m, and doubles width is 10.97 m, following ITF Rule 1 and Appendix IX (https://www.itftennis.com/media/15604/atp-2026-rulebook.pdf).
+## Court coordinate system
 
-The new `court_geometry` service estimates an image-to-court homography from at least four manually or automatically identified point correspondences and projects image-space foot points into this coordinate system. The baseline-distance utility returns positive values behind the baseline, zero on the line and negative values inside the court. A valid transform still depends on correct, correctly paired court keypoints; automatic keypoint detection and camera-segment handling are not implemented yet.
+The court plane uses metres, with the origin at net centre, x across court width and y along court length. The near half is positive y and the far half is negative y. Baselines are at +11.885 m and -11.885 m; doubles boundaries at x = ±5.485 m and singles sidelines at x = ±4.115 m. A four-corner projective homography maps normalized image points to the standard 10.97 m × 23.77 m doubles court.
 
-A court-keypoint detector identifies visible line intersections. A homography maps image-plane coordinates to the court plane. For a camera that pans, zooms or cuts, calibration must be re-estimated or associated with a stable camera segment. Measurements should be marked unavailable when calibration is invalid.
+Court calibration is manually tapped or initialized by a green-region suggestion that requires user verification. There is no trained court-line/keypoint model or camera-motion segmentation. Measurements become invalid after an unhandled camera pan, zoom or cut.
 
-For player positioning, the preferred reference point is the midpoint between the feet / ground-contact estimate, not the bounding-box centre. A person's feet can be occluded; when that happens, retain a confidence flag and avoid presenting a falsely exact distance.
+## Storage and background work
 
-## Processing model
+- Local SAF videos are not copied; a persistable read grant is retained.
+- Direct HTTPS video-file downloads use WorkManager with a connected-network constraint and resume by HTTP Range where supported. Content must be a direct video response, not a watch page, DRM stream or playlist.
+- A shared 4,768 MiB limit is applied to local inputs and downloaded files.
+- Each analysis request processes a bounded five-second segment. WorkManager chains the next segment and can resume pending work after process exit/reboot, subject to Android scheduling. Force-stop prevents automatic restart until the app is reopened.
+- Project metadata is stored as JSON and the full sample stream as append-only NDJSON. The JSON project keeps a bounded recent sample tail for UI rendering; CSV export reads the full log.
+- Downloaded source files and metadata remain in app-private storage. Original SAF videos remain in their user-selected location.
 
-Video ingestion and analysis are separate. Upload creates a `video` record; scheduling creates an `analysis_job`; workers produce versioned observations and events. The API should remain responsive while GPU work runs asynchronously.
+## Visual outputs
 
-Each result must retain:
+The mini-court displays recent calibrated P1/P2 paths, density markers, current foot positions and ball observations. SVG, PNG and PDF reports use court-calibrated observations and manually reviewed event locations. CSV exports expose the sample timeline, event review state and manual positions.
 
-- source video ID and content fingerprint;
-- source timestamp or frame index;
-- calibration segment and coordinate transform version;
-- detector / tracker / classifier model identifiers;
-- confidence and review state;
-- derivation version for calculated metrics.
+## Legacy backend
 
-## Data entities (planned)
+The previous FastAPI/OpenCV service remains in the repository as a research/reference implementation. It is not required by the Android application and is not the primary data or inference path. GitHub Actions builds the Android APK and retrieves the open-source model assets during the build; a permanent API server is not required.
 
-- `Video`: owner, storage key, content hash, media metadata, retention state.
-- `AnalysisJob`: requested pipeline version, state, progress and failure details.
-- `CameraSegment`: timestamp range, camera state and calibration reference.
-- `Track`: stable player / ball identity within a segment.
-- `Observation`: frame-level image and court coordinates, confidence.
-- `Event`: serve, contact, bounce, net crossing, point start/end, manual correction.
-- `Metric`: value, unit, denominator, filters, provenance and confidence coverage.
-- `Report`: charts, court maps and export references.
+## Validation requirements and limits
 
-## API evolution
-
-The initial API is intentionally small. Planned resource shape:
-
-- `POST /api/v1/videos` — upload or register an authorised source.
-- `GET /api/v1/videos/{video_id}` — video metadata and ingestion state.
-- `POST /api/v1/videos/{video_id}/analyses` — request an analysis configuration.
-- `GET /api/v1/analyses/{analysis_id}` — status and progress.
-- `GET /api/v1/analyses/{analysis_id}/events` — timestamped event list.
-- `GET /api/v1/analyses/{analysis_id}/metrics` — calculated metrics with denominators.
-- `GET /api/v1/analyses/{analysis_id}/court-map` — normalised court observations.
-
-These endpoints are planned and are not implemented yet.
-
-## Deployment boundaries
-
-- API: authentication, authorisation, quota and lifecycle management.
-- Queue: at-least-once job delivery with idempotent workers.
-- GPU workers: isolated, versioned model environments.
-- Object storage: private buckets, encryption, retention and signed URLs.
-- Database: durable metadata and queryable event/metric records.
-- Observability: job timings, dropped-frame rate, detector coverage, calibration quality and error rates.
+The open-source models are not a fully validated tennis analytics stack. Before deriving official or decision-grade statistics, the pipeline needs a manually labelled held-out tennis video set, calibration error measurements, pose precision/recall, ball tracking precision/recall, identity switch counts, missed-frame rates, camera-cut tests, device performance/battery/thermal benchmarks and human-reviewed event accuracy. Generic pose output, colour coverage or a TrackNet point alone must not be presented as proof of a serve, bounce, shot landing, winner or player identity.
