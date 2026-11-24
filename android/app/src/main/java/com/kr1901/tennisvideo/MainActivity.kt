@@ -574,11 +574,16 @@ private fun TennisVideoApp() {
                                     }
                                 }
                             },
-                            enabled = selectedUri != null && !busy &&
-                                uploadStatus !in listOf("QUEUED", "UPLOADING"),
+                            enabled = selectedUri != null && !busy && uploadStatus != "COMPLETED",
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("Upload in background")
+                            Text(
+                                if (uploadStatus in listOf("QUEUED", "UPLOADING", "PAUSED")) {
+                                    "Resume / check upload"
+                                } else {
+                                    "Upload in background"
+                                }
+                            )
                         }
                     }
                     if (uploadTotalBytes > 0L && uploadStatus in listOf("QUEUED", "UPLOADING", "PAUSED", "COMPLETED")) {
