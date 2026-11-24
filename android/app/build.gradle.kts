@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.kr1901.tennisvideo"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.kr1901.tennisvideo"
@@ -32,7 +32,7 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.07.00")
     implementation(composeBom)
 
     implementation("androidx.activity:activity-compose:1.13.0")
