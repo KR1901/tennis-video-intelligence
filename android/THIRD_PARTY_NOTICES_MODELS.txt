@@ -1,0 +1,51 @@
+Third-party model notices for Android
+=========================================
+
+1) TrackNet V1 tennis-ball heatmap model
+   Model: vishnushenoy09/tracknet-v1-tennis
+   Source: https://huggingface.co/vishnushenoy09/tracknet-v1-tennis
+   License declared by the model publisher: MIT
+   Paper: Huang et al., "TrackNet: A Deep Learning Network for Tracking High-speed
+   and Tiny Objects in Sports Applications", AVSS 2019.
+   The CI build downloads the checkpoint and exports an ONNX inference graph.
+   The exporter does not redistribute the original Python implementation.
+
+   MIT License notice supplied by the model publisher:
+   Copyright (c) vishnushenoy09
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+2) MediaPipe Pose Landmarker Lite
+   Model: pose_landmarker_lite.task
+   Source: https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker
+   Download: Google's official MediaPipe model bucket.
+   MediaPipe Tasks and its official sample code are Apache License 2.0.
+   The app uses the task to estimate up to two visible human body poses. It does
+   not identify the people by name or establish a verified player identity.
+   See https://github.com/google-ai-edge/mediapipe/blob/master/LICENSE.
+
+3) ONNX Runtime Android
+   Package: com.microsoft.onnxruntime:onnxruntime-android
+   License: MIT
+   Source: https://github.com/microsoft/onnxruntime
+
+4) MediaPipe Tasks Vision Android
+   Package: com.google.mediapipe:tasks-vision
+   License: Apache License 2.0
+   Source: https://github.com/google-ai-edge/mediapipe
