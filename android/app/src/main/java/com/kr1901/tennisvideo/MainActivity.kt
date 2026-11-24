@@ -259,11 +259,18 @@ private fun LocalTennisVideoApp() {
                     busy = true
                     message = "Reading the video from local storage..."
                     try {
-                        runCatching {
+                        val persistedReadGrant = runCatching {
                             context.contentResolver.takePersistableUriPermission(
                                 uri,
                                 android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                             )
+                            context.contentResolver.persistedUriPermissions.any { permission ->
+                                permission.uri == uri && permission.isReadPermission
+                            }
+                        }.getOrDefault(false)
+                        if (!persistedReadGrant) {
+                            message = "Android did not grant persistent read access to this video provider. Choose a file provider that supports background access so analysis can continue after the app closes."
+                            return@launch
                         }
                         val metadata = withContext(Dispatchers.IO) {
                             LocalVideoInspector.inspect(context, uri)
