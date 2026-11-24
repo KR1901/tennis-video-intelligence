@@ -32,3 +32,32 @@ jobs:
         run: ruff format --check .
       - name: Test
         run: pytest
+      - name: Build and smoke-test backend container
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          docker build -t tennis-video-intelligence-api:ci .
+          DATA_DIR="$(mktemp -d)"
+          CONTAINER_NAME="tvi-backend-ci"
+          cleanup() {
+            docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+            rm -rf "$DATA_DIR"
+          }
+          trap cleanup EXIT
+          docker run -d --name "$CONTAINER_NAME" \
+            -e TVI_API_TOKEN=ci-smoke-test-token \
+            -e TVI_ENVIRONMENT=production \
+            -e PORT=18000 \
+            -p 18000:18000 \
+            -v "$DATA_DIR:/data" \
+            tennis-video-intelligence-api:ci
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18000/health >/dev/null; then
+              echo "Backend container health check passed."
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs "$CONTAINER_NAME"
+          echo "Backend container did not become healthy." >&2
+          exit 1
