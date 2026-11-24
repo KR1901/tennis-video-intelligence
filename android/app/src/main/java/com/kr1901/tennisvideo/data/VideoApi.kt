@@ -32,7 +32,7 @@ class VideoApi(
 
     fun health(): JSONObject = requestJson("/health", "GET")
 
-    fun uploadVideo(uri: Uri, onProgress: (Long, Long) -> Unit = {}): JSONObject {
+    fun uploadVideo(uri: Uri, onProgress: (Long, Long) -> Unit = { _, _ -> }): JSONObject {
         val fileName = displayName(uri)
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
         val fileSize = fileSize(uri)
