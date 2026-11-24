@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 
 from app.services.court_geometry import (
