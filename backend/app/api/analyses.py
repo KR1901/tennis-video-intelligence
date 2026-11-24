@@ -264,7 +264,15 @@ async def review_analysis_event(
     event["player_id"] = request.player_id
     if request.note is not None:
         event["review_note"] = request.note
-    for field in ("serve_number", "serve_result", "shot_depth", "shot_direction", "point_id", "rally_contact_index"):
+    metadata_fields = (
+        "serve_number",
+        "serve_result",
+        "shot_depth",
+        "shot_direction",
+        "point_id",
+        "rally_contact_index",
+    )
+    for field in metadata_fields:
         value = getattr(request, field)
         if value is not None:
             event[field] = value
