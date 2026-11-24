@@ -92,7 +92,7 @@ The API validates uploads, supports resumable 16 MiB chunks up to 10 GiB per fil
 
 ## Android prototype
 
-See [the Android setup and usage guide](android/README.md). The app includes resumable 10 GiB video uploads, progress and retry handling, HTTPS-only production networking, Liquid Glass-inspired Android surfaces, court calibration, sampled candidate analysis, event review, playback, and SVG/PNG/PDF reports. Debug and release builds are checked by GitHub Actions.
+See [the Android setup and usage guide](android/README.md). The app includes resumable 10 GiB video uploads, Android-managed background continuation and retry, hosted HTTPS backend configuration at build time, Liquid Glass-inspired Android surfaces, court calibration, sampled candidate analysis, event review, playback, and SVG/PNG/PDF reports. Debug and release builds are checked by GitHub Actions.
 
 ## Release signing
 
@@ -136,3 +136,10 @@ ruff format --check .
 ## Licensing
 
 The original code in this repository is licensed under Apache-2.0. This does not automatically grant rights to third-party video footage, datasets, pretrained model weights, data feeds or external services. Each adopted dependency, model and dataset must be reviewed under its own licence and terms before distribution or commercial use.
+
+
+## Android background uploads
+
+The Android client schedules user-initiated data-transfer jobs on Android 14+ and a WorkManager foreground worker on older supported versions. It stores the persistable document URI grant and resumes chunked upload from the server's last confirmed offset after an interruption. The upload can continue when the activity closes or is swiped out of Recents; Android force-stop / Task Manager Stop, uninstall, or loss of the document permission requires the user to reopen the app and resume.
+
+For a release APK that connects automatically, configure the GitHub Actions repository variable `TVI_API_BASE_URL` and secret `TVI_API_TOKEN`. The release workflow fails rather than publishing an APK with an empty production connection configuration.
