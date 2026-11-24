@@ -15,7 +15,7 @@ The analysis pipeline is designed around the following stages:
 
 1. **Ingest** — validate, store and fingerprint the source video.
 2. **Inspect** — probe codec, duration, frame rate, resolution and audio/video streams.
-3. **Calibrate** — detect court keypoints and map image coordinates to real court coordinates.
+3. **Calibrate** — currently, preview a video frame, manually select four court corners and map image coordinates to real court coordinates; automatic court-keypoint detection is planned.
 4. **Track** — detect both players and the ball across frames, maintaining identities through camera changes where possible.
 5. **Recognise events** — detect serves, contacts, bounces, rally boundaries and point endings.
 6. **Calculate** — derive statistics from verified events and calibrated coordinates.
@@ -73,7 +73,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/videos" \\
   -F "file=@/path/to/your-match.mp4"
 ```
 
-The API checks the filename extension, declared content type and configured size cap, stores the file in the configured local storage directory and returns a video ID. Then call `POST /api/v1/videos/{video_id}/inspect` to use FFmpeg/ffprobe to inspect the media container and record available duration, resolution, frame rate, codec, rotation and file-size metadata. `GET /api/v1/videos/{video_id}` returns the stored status and inspection result. This is media inspection, not tennis analysis: player/ball tracking and match statistics have not yet been implemented. The current storage adapter is for local development; production storage, database persistence, background jobs and access controls are planned separately.
+The API checks the filename extension, declared content type and configured size cap, stores the file in the configured local storage directory and returns a video ID. Then call `POST /api/v1/videos/{video_id}/inspect` to use FFmpeg/ffprobe to inspect the media container and record available duration, resolution, frame rate, codec, rotation and file-size metadata. `GET /api/v1/videos/{video_id}` returns the stored status and inspection result. `GET /api/v1/videos/{video_id}/frame?timestamp_seconds=12.5` extracts a JPEG preview. Submit the four outer court corners (far-left, far-right, near-right, near-left) to `POST /api/v1/videos/{video_id}/calibrations`; then use the returned calibration ID with the `/project` endpoint to convert a selected image point into court-plane metres. This is media inspection, not tennis analysis: player/ball tracking and match statistics have not yet been implemented. The current storage adapter is for local development; production storage, database persistence, background jobs and access controls are planned separately.
 
 ## Configuration
 
