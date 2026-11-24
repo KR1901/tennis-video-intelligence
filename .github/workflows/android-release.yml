@@ -85,7 +85,7 @@ jobs:
         if: steps.signing.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: tennis-video-intelligence-v0.6.1-release-signed
+          name: tennis-video-intelligence-v0.6.2-release-signed
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
@@ -94,7 +94,7 @@ jobs:
         if: steps.signing.outputs.configured != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: tennis-video-intelligence-v0.6.1-release-unsigned
+          name: tennis-video-intelligence-v0.6.2-release-unsigned
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
@@ -103,7 +103,7 @@ jobs:
         if: steps.signing.outputs.configured == 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: v0.6.1
+          VERSION: v0.6.2
         run: |
           if gh release view "$VERSION" >/dev/null 2>&1; then
             echo "Release $VERSION already exists; leaving the published release unchanged."
@@ -112,6 +112,6 @@ jobs:
           APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           gh release create "$VERSION" "$APK" \
             --title "Tennis Video Intelligence $VERSION" \
-            --notes "Bug-fix release for v0.6.0. Fixes MediaPipe bitmap ownership: pose inference now uses a dedicated ARGB_8888 copy so closing MPImage cannot recycle the decoder frame needed by TrackNet and motion analysis. Retains offline-first video input, on-device MediaPipe pose and TrackNet ball candidates, selectable 2.5/5/10 fps sampling, court calibration, background analysis, event review, reviewed metrics and report exports. Automatic tennis-event recognition remains a prototype; user review is required." \
+            --notes "Release v0.6.2 improves WorkManager reliability and visibility. The app now reads the actual queued/running/blocked worker state, marks processing immediately when a worker starts, offers recovery after stale or missing work, cancels stale project work before retrying, and expedites the initial user-requested analysis chunk when Android quota permits. The first chunk falls back to normal WorkManager scheduling when expedited quota is unavailable. Also retains the v0.6.1 MediaPipe bitmap-ownership fix and the offline-first analysis, calibration, review and export workflow. Automatic tennis-event recognition remains a prototype; user review is required." \
             --target "$GITHUB_SHA" \
             --latest
