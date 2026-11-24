@@ -41,7 +41,7 @@ jobs:
           CONTAINER_NAME="tvi-backend-ci"
           cleanup() {
             docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-            rm -rf "$DATA_DIR"
+            sudo rm -rf "$DATA_DIR"
           }
           trap cleanup EXIT
           docker run -d --name "$CONTAINER_NAME" \
