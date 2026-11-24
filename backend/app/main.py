@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.videos import router as videos_router
 from app.api.analyses import router as analyses_router
+from app.api.videos import router as videos_router
 from app.core.config import get_settings
 
 settings = get_settings()
