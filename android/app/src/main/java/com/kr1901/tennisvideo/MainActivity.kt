@@ -112,6 +112,8 @@ private fun TennisVideoApp() {
     var analysisStatus by remember { mutableStateOf("Not started") }
     var analysisProgress by remember { mutableStateOf(0) }
     var analysisSummary by remember { mutableStateOf<JSONObject?>(null) }
+    var manualEventTimestamp by remember { mutableStateOf("10.0") }
+    var manualEventType by remember { mutableStateOf("serve_bounce") }
     var reportBytes by remember { mutableStateOf<ByteArray?>(null) }
     val eventCandidates = remember { mutableStateListOf<JSONObject>() }
 
@@ -787,6 +789,29 @@ private fun TennisVideoApp() {
                                         color = Muted,
                                         fontSize = 10.sp
                                     )
+                                    OutlinedButton(
+                                        onClick = {
+                                            val timestamp = event.optDouble("timestamp_seconds", 0.0)
+                                            scope.launch {
+                                                busy = true
+                                                try {
+                                                    timestampText = String.format(Locale.US, "%.2f", timestamp)
+                                                    frameBitmap = withContext(Dispatchers.IO) {
+                                                        api().getFrame(videoId!!, timestamp)
+                                                    }
+                                                    statusMessage = "Loaded event frame at $timestampText seconds."
+                                                } catch (error: Exception) {
+                                                    statusMessage = "Could not load event frame: ${error.message}"
+                                                } finally {
+                                                    busy = false
+                                                }
+                                            }
+                                        },
+                                        enabled = !busy,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Preview event frame")
+                                    }
                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         OutlinedButton(onClick = { reviewCandidate(event, "serve_bounce") }, enabled = !busy) { Text("Serve") }
                                         OutlinedButton(onClick = { reviewCandidate(event, "shot_bounce") }, enabled = !busy) { Text("Bounce") }
@@ -800,6 +825,72 @@ private fun TennisVideoApp() {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            if (analysisId != null && analysisStatus == "completed") {
+                Card(shape = RoundedCornerShape(16.dp)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("Add a manually confirmed event", color = Ink, fontWeight = FontWeight.Bold)
+                        OutlinedTextField(
+                            value = manualEventTimestamp,
+                            onValueChange = { manualEventTimestamp = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Event timestamp (seconds)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = manualEventType,
+                            onValueChange = { manualEventType = it.trim() },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Event type") },
+                            singleLine = true
+                        )
+                        Text(
+                            "Types: serve_bounce, shot_bounce, racket_contact, point_start, point_end, net_contact, serve_plus_one, return_plus_one, winner, forced_error, unforced_error, manual_note.",
+                            color = Muted,
+                            fontSize = 10.sp
+                        )
+                        Button(
+                            onClick = {
+                                val id = analysisId
+                                val timestamp = manualEventTimestamp.toDoubleOrNull()
+                                val type = manualEventType.trim()
+                                if (id == null || timestamp == null || timestamp < 0 || type.isBlank()) {
+                                    statusMessage = "Enter a valid timestamp and event type."
+                                } else {
+                                    scope.launch {
+                                        busy = true
+                                        statusMessage = "Saving manual event..."
+                                        try {
+                                            withContext(Dispatchers.IO) {
+                                                api().createManualEvent(
+                                                    id,
+                                                    timestamp,
+                                                    type,
+                                                    playerEnd + "_player",
+                                                    "Manually confirmed from the video review."
+                                                )
+                                            }
+                                            refreshAnalysis()
+                                            statusMessage = "Manual event saved as confirmed."
+                                        } catch (error: Exception) {
+                                            statusMessage = "Manual event failed: ${error.message}"
+                                            busy = false
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Add confirmed event")
                         }
                     }
                 }
