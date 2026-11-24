@@ -9,7 +9,6 @@ from typing import Any
 import cv2
 import numpy as np
 
-from app.services.analysis_metrics import calculate_reviewed_match_metrics
 from app.services.court_geometry import (
     CourtDimensions,
     estimate_homography,
