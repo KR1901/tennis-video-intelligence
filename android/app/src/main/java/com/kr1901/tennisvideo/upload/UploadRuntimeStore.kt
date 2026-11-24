@@ -50,6 +50,11 @@ object UploadRuntimeStore {
             .edit()
             .putString(KEY_URI, uri.toString())
             .putString(KEY_NAME, displayName)
+            .putString(KEY_STATUS, "IDLE")
+            .putLong(KEY_UPLOADED, 0L)
+            .putLong(KEY_TOTAL, 0L)
+            .remove(KEY_VIDEO_ID)
+            .remove(KEY_ERROR)
             .apply()
     }
 
@@ -105,7 +110,7 @@ object UploadRuntimeStore {
         val uri = prefs.getString(KEY_URI, null)?.let(Uri::parse)
         return TransferState(
             uri = uri,
-            displayName = prefs.getString(KEY_NAME, "Selected video") ?: "Selected video",
+            displayName = prefs.getString(KEY_NAME, null) ?: if (uri == null) "No video selected" else "Selected video",
             status = prefs.getString(KEY_STATUS, "IDLE") ?: "IDLE",
             uploadedBytes = prefs.getLong(KEY_UPLOADED, 0L),
             totalBytes = prefs.getLong(KEY_TOTAL, 0L),
