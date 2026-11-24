@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.widget.MediaController
+import android.widget.VideoView
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -42,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -59,6 +62,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -127,6 +131,7 @@ private fun LocalTennisVideoApp() {
     var manualEventType by remember { mutableStateOf("serve") }
     var manualEventNote by remember { mutableStateOf("") }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showVideoPlayback by remember { mutableStateOf(false) }
     val courtCorners = remember { mutableStateListOf<Pair<Float, Float>>() }
 
     suspend fun restoreProject(id: String) {
@@ -907,6 +912,48 @@ private fun LocalTennisVideoApp() {
                 }
 
                 Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("3 · Source video playback", fontWeight = FontWeight.Bold, color = AppInk)
+                        Text(
+                            "Play or seek the original match video. Pause at a moment and use its exact timestamp for a manual event or location mark.",
+                            color = AppMuted,
+                            fontSize = 12.sp
+                        )
+                        OutlinedButton(
+                            onClick = { showVideoPlayback = !showVideoPlayback },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (showVideoPlayback) "Hide source video player" else "Open source video player")
+                        }
+                        if (showVideoPlayback) {
+                            VideoPlaybackCard(
+                                uri = Uri.parse(project?.optString("content_uri").orEmpty()),
+                                onPauseAt = { timeMs ->
+                                    val item = project
+                                    if (item != null) scope.launch {
+                                        timestampText = String.format(Locale.US, "%.1f", timeMs / 1000.0)
+                                        frameTimestampMs = timeMs.coerceIn(0L, durationMs)
+                                        try {
+                                            frameBitmap = withContext(Dispatchers.IO) {
+                                                LocalVideoInspector.frameAt(
+                                                    context,
+                                                    Uri.parse(item.optString("content_uri")),
+                                                    frameTimestampMs
+                                                )
+                                            }
+                                            message = "Source video paused at " + formatDuration(frameTimestampMs) +
+                                                ". The frame preview and manual event tools now use this timestamp."
+                                        } catch (error: Exception) {
+                                            message = "Could not capture paused frame: " + (error.message ?: "unknown error")
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("3 · Analyse on this phone", fontWeight = FontWeight.Bold, color = AppInk)
                         Text(
@@ -1232,6 +1279,68 @@ private fun LocalTennisVideoApp() {
             }
             Text(message, color = AppMuted, fontSize = 12.sp)
             Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun VideoPlaybackCard(
+    uri: Uri,
+    onPauseAt: (Long) -> Unit
+) {
+    val context = LocalContext.current
+    val videoView = remember(uri) {
+        VideoView(context).apply {
+            setVideoURI(uri)
+            val controller = MediaController(context)
+            controller.setAnchorView(this)
+            setMediaController(controller)
+        }
+    }
+    var playing by remember(uri) { mutableStateOf(false) }
+
+    DisposableEffect(videoView) {
+        onDispose {
+            runCatching { videoView.stopPlayback() }
+        }
+    }
+
+    AndroidView(
+        factory = { videoView },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(230.dp),
+        update = { view ->
+            if (view.tag != uri.toString()) {
+                view.tag = uri.toString()
+                view.setVideoURI(uri)
+            }
+        }
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            onClick = {
+                if (videoView.isPlaying) {
+                    videoView.pause()
+                    playing = false
+                } else {
+                    videoView.start()
+                    playing = true
+                }
+            },
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(if (playing) "Pause" else "Play")
+        }
+        Button(
+            onClick = {
+                videoView.pause()
+                playing = false
+                onPauseAt(videoView.currentPosition.toLong())
+            },
+            modifier = Modifier.weight(1f)
+        ) {
+            Text("Use paused time")
         }
     }
 }
