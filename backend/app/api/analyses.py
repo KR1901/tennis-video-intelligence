@@ -235,7 +235,10 @@ async def review_analysis_event(
     if job.get("status") != "completed":
         raise HTTPException(status_code=409, detail="Analysis must finish before reviewing events.")
     if request.review_status == "accepted" and request.event_type is None:
-        raise HTTPException(status_code=422, detail="An accepted event must have an explicit event type.")
+        raise HTTPException(
+            status_code=422,
+            detail="An accepted event must have an explicit event type.",
+        )
 
     events = job.get("events", [])
     if not isinstance(events, list):
