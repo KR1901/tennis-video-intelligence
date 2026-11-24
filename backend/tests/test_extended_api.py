@@ -137,3 +137,39 @@ def test_analysis_png_and_pdf_report_endpoints(tmp_path, monkeypatch) -> None:
     assert pdf.headers["content-type"] == "application/pdf"
     assert pdf.content.startswith(b"%PDF-1.4")
     get_settings.cache_clear()
+
+
+
+def test_manual_event_metadata_is_persisted_for_review_metrics(tmp_path, monkeypatch) -> None:
+    get_settings.cache_clear()
+    monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
+    analysis_id = str(uuid4())
+    analyses_dir = tmp_path / "analyses"
+    analyses_dir.mkdir()
+    job = {
+        "analysis_id": analysis_id,
+        "video_id": str(uuid4()),
+        "status": "completed",
+        "summary": {"source": {"duration_seconds": 100.0}},
+        "events": [],
+    }
+    (analyses_dir / f"{analysis_id}.json").write_text(json.dumps(job), encoding="utf-8")
+
+    response = client.post(
+        f"/api/v1/analyses/{analysis_id}/events",
+        json={
+            "timestamp_seconds": 5.2,
+            "event_type": "serve_attempt",
+            "serve_number": 2,
+            "serve_result": "ace",
+            "player_id": "near_player",
+            "note": "Second serve ace confirmed from replay.",
+        },
+    )
+
+    assert response.status_code == 201
+    event = response.json()["event"]
+    assert event["serve_number"] == 2
+    assert event["serve_result"] == "ace"
+    assert response.json()["reviewed_metrics"]["serve_placement"]["second_serve_events"] == 1
+    get_settings.cache_clear()
