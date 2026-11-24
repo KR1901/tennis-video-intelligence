@@ -317,7 +317,7 @@ async def stream_video(video_id: str, request: Request):
             headers=headers,
         )
 
-    match = re.fullmatch(r"bytes=(\d*)-(\d*), range_header.strip())
+    match = re.fullmatch(r"bytes=(\\d*)-(\\d*)", range_header.strip())
     if match is None or (not match.group(1) and not match.group(2)):
         raise HTTPException(
             status_code=416,
