@@ -65,7 +65,8 @@ def test_delete_video_removes_original_metadata_and_analysis_files(tmp_path, mon
     analyses_dir.mkdir()
     analysis_id = str(uuid4())
     associated = analyses_dir / f"{analysis_id}.json"
-    associated.write_text(json.dumps({"analysis_id": analysis_id, "video_id": video_id}), encoding="utf-8")
+    associated_payload = {"analysis_id": analysis_id, "video_id": video_id}
+    associated.write_text(json.dumps(associated_payload), encoding="utf-8")
     unrelated = analyses_dir / f"{uuid4()}.json"
     unrelated.write_text(json.dumps({"video_id": str(uuid4())}), encoding="utf-8")
 
@@ -118,8 +119,12 @@ def test_analysis_png_and_pdf_report_endpoints(tmp_path, monkeypatch) -> None:
         "completed_at": "2026-11-24T00:00:00+00:00",
         "summary": {
             "players": {
-                "near_player": {"average_baseline_distance_m": 1.0, "samples": 3, "coverage_pct": 50},
-                "far_player": {"average_baseline_distance_m": -1.0, "samples": 2, "coverage_pct": 30},
+                "near_player": {
+                    "average_baseline_distance_m": 1.0, "samples": 3, "coverage_pct": 50
+                },
+                "far_player": {
+                    "average_baseline_distance_m": -1.0, "samples": 2, "coverage_pct": 30
+                },
             },
             "position_heatmaps": {"near_player": [[0, 1]], "far_player": [[1, 0]]},
         },
