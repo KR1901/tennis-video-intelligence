@@ -391,6 +391,7 @@ def run_analysis_job(
     auto_matrix: np.ndarray | None = None
     auto_polygon: np.ndarray | None = None
     previous_ball: tuple[float, float, float] | None = None
+    previous_velocity: tuple[float, tuple[float, float]] | None = None
     event_index = 0
     sampled = 0
     eligible_player_scans = 0
@@ -544,14 +545,16 @@ def run_analysis_job(
                                 (image_point[0] - previous_x) / elapsed,
                                 (image_point[1] - previous_y) / elapsed,
                             )
-                            prior = getattr(run_analysis_job, "_prior_velocity", None)
-                            if prior is not None:
-                                prior_timestamp, prior_velocity = prior
+                            if previous_velocity is not None:
+                                prior_timestamp, prior_velocity_value = previous_velocity
                                 if timestamp - prior_timestamp <= 1.5:
-                                    dot = prior_velocity[0] * velocity[0] + prior_velocity[1] * velocity[1]
+                                    dot = (
+                                        prior_velocity_value[0] * velocity[0]
+                                        + prior_velocity_value[1] * velocity[1]
+                                    )
                                     cosine = dot / max(
                                         1e-9,
-                                        math.hypot(*prior_velocity) * math.hypot(*velocity),
+                                        math.hypot(*prior_velocity_value) * math.hypot(*velocity),
                                     )
                                     if cosine < -0.2:
                                         event_index += 1
@@ -560,12 +563,12 @@ def run_analysis_job(
                                                 timestamp,
                                                 trace_item["image_point"],
                                                 court_point,
-                                                prior_velocity,
+                                                prior_velocity_value,
                                                 velocity,
                                                 event_index,
                                             )
                                         )
-                            setattr(run_analysis_job, "_prior_velocity", (timestamp, velocity))
+                            previous_velocity = (timestamp, velocity)
                     previous_ball = (timestamp, float(image_point[0]), float(image_point[1]))
 
             now = time.monotonic()
@@ -581,8 +584,6 @@ def run_analysis_job(
                 last_progress_write = now
     finally:
         capture.release()
-        if hasattr(run_analysis_job, "_prior_velocity"):
-            delattr(run_analysis_job, "_prior_velocity")
 
     if sampled == 0:
         raise VideoAnalysisError("No decodable frames were found in the uploaded video.")
