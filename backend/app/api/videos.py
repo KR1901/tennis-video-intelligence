@@ -247,14 +247,18 @@ async def project_court_point(
         raise HTTPException(status_code=404, detail="Calibration not found.") from exc
 
     calibrations = metadata.get("calibrations", [])
-    calibration = next(
-        (
-            item
-            for item in calibrations
-            if isinstance(item, dict) and item.get("calibration_id") == calibration_id
-        ),
-        None,
-    ) if isinstance(calibrations, list) else None
+    calibration = (
+        next(
+            (
+                item
+                for item in calibrations
+                if isinstance(item, dict) and item.get("calibration_id") == calibration_id
+            ),
+            None,
+        )
+        if isinstance(calibrations, list)
+        else None
+    )
     if calibration is None:
         raise HTTPException(status_code=404, detail="Calibration not found.")
 
