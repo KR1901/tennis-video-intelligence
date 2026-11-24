@@ -1,11 +1,14 @@
 import json
+import mimetypes
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
 import numpy as np
-from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 
 from app.core.config import get_settings
 from app.schemas.calibration import (
@@ -275,3 +278,104 @@ async def project_court_point(
         court_y_m=court_point[1],
         signed_baseline_distance_m=baseline_distance,
     )
+
+
+def _stream_file_range(path: Path, start: int, length: int, chunk_size: int = 1024 * 1024):
+    remaining = length
+    with path.open("rb") as source:
+        source.seek(start)
+        while remaining > 0:
+            chunk = source.read(min(chunk_size, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
+@router.get(
+    "/{video_id}/stream",
+    summary="Stream the original uploaded video with byte-range support",
+)
+async def stream_video(video_id: str, request: Request):
+    video_path, _, metadata = _load_video_metadata(video_id)
+    file_size = video_path.stat().st_size
+    media_type = mimetypes.guess_type(str(video_path))[0] or str(
+        metadata.get("content_type", "video/mp4")
+    )
+    range_header = request.headers.get("range")
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "no-store",
+        "Content-Disposition": 'inline; filename="match-video"',
+    }
+
+    if not range_header:
+        headers["Content-Length"] = str(file_size)
+        return StreamingResponse(
+            _stream_file_range(video_path, 0, file_size),
+            media_type=media_type,
+            headers=headers,
+        )
+
+    match = re.fullmatch(r"bytes=(\\d*)-(\\d*)", range_header.strip())
+    if match is None or (not match.group(1) and not match.group(2)):
+        raise HTTPException(
+            status_code=416,
+            detail="Invalid byte range.",
+            headers={"Content-Range": f"bytes */{file_size}"},
+        )
+
+    if not match.group(1):
+        suffix_length = int(match.group(2))
+        if suffix_length <= 0:
+            raise HTTPException(
+                status_code=416,
+                detail="Invalid byte range.",
+                headers={"Content-Range": f"bytes */{file_size}"},
+            )
+        start = max(0, file_size - suffix_length)
+        end = file_size - 1
+    else:
+        start = int(match.group(1))
+        end = int(match.group(2)) if match.group(2) else file_size - 1
+
+    if start >= file_size or end < start:
+        raise HTTPException(
+            status_code=416,
+            detail="Requested byte range is not satisfiable.",
+            headers={"Content-Range": f"bytes */{file_size}"},
+        )
+    end = min(end, file_size - 1)
+    length = end - start + 1
+    headers["Content-Length"] = str(length)
+    headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    return StreamingResponse(
+        _stream_file_range(video_path, start, length),
+        status_code=206,
+        media_type=media_type,
+        headers=headers,
+    )
+
+
+@router.delete(
+    "/{video_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an uploaded video and its analysis files",
+)
+async def delete_video(video_id: str) -> Response:
+    video_path, metadata_path, _ = _load_video_metadata(video_id)
+    root = Path(get_settings().storage_dir)
+    video_path.unlink(missing_ok=True)
+    metadata_path.unlink(missing_ok=True)
+
+    analyses_root = root / "analyses"
+    if analyses_root.is_dir():
+        for job_path in analyses_root.glob("*.json"):
+            try:
+                job = json.loads(job_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(job, dict) and job.get("video_id") == video_id:
+                job_path.unlink(missing_ok=True)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
