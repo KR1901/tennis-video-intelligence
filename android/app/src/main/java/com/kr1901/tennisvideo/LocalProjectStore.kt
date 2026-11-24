@@ -45,6 +45,7 @@ internal object LocalProjectStore {
             .put("progress_pct", 0)
             .put("samples", JSONArray())
             .put("court_corners", JSONArray())
+            .put("manual_positions", JSONArray())
         save(context, project)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(LAST_PROJECT_ID, id).apply()
@@ -111,6 +112,7 @@ internal object LocalProjectStore {
                 corners.put(JSONObject().put("x", point.first).put("y", point.second))
             }
             project.put("court_corners", corners)
+            if (points.isEmpty()) project.put("manual_positions", JSONArray())
         }
     }
 
@@ -125,6 +127,51 @@ internal object LocalProjectStore {
                 .append(sample.optDouble("green_pct")).append(',')
                 .append(sample.optDouble("motion_pct")).append(',')
                 .append(sample.optDouble("brightness")).append('\n')
+        }
+        return csv.toString()
+    }
+
+
+    @Synchronized
+    fun addManualPosition(
+        context: Context,
+        id: String,
+        timestampMs: Long,
+        imageX: Float,
+        imageY: Float,
+        measurement: CourtPositionMeasurement
+    ) {
+        update(context, id) { project ->
+            val positions = project.optJSONArray("manual_positions") ?: JSONArray()
+            positions.put(
+                JSONObject()
+                    .put("timestamp_ms", timestampMs)
+                    .put("image_x", imageX)
+                    .put("image_y", imageY)
+                    .put("court_x_m", measurement.xMeters)
+                    .put("court_y_m", measurement.yMeters)
+                    .put("player_end", measurement.playerEnd)
+                    .put("baseline_distance_m", measurement.baselineDistanceMeters)
+            )
+            project.put("manual_positions", positions)
+        }
+    }
+
+    @Synchronized
+    fun exportPositionsCsv(context: Context, id: String): String {
+        val project = load(context, id) ?: error("Project was not found")
+        val positions = project.optJSONArray("manual_positions") ?: JSONArray()
+        val csv = StringBuilder("timestamp_ms,player_end,court_x_m,court_y_m,signed_baseline_distance_m,interpretation\\n")
+        for (index in 0 until positions.length()) {
+            val position = positions.optJSONObject(index) ?: continue
+            val distance = position.optDouble("baseline_distance_m")
+            val interpretation = if (distance >= 0.0) "behind_baseline" else "inside_court"
+            csv.append(position.optLong("timestamp_ms")).append(',')
+                .append(position.optString("player_end")).append(',')
+                .append(position.optDouble("court_x_m")).append(',')
+                .append(position.optDouble("court_y_m")).append(',')
+                .append(distance).append(',')
+                .append(interpretation).append('\\n')
         }
         return csv.toString()
     }
