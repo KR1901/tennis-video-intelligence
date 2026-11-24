@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,6 +39,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -124,6 +126,7 @@ private fun LocalTennisVideoApp() {
     var markEventLocation by remember { mutableStateOf(false) }
     var manualEventType by remember { mutableStateOf("serve") }
     var manualEventNote by remember { mutableStateOf("") }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
     val courtCorners = remember { mutableStateListOf<Pair<Float, Float>>() }
 
     suspend fun restoreProject(id: String) {
@@ -1147,6 +1150,62 @@ private fun LocalTennisVideoApp() {
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Export PDF report") }
                 }
+            }
+
+            if (project != null) {
+                Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("7 · Local project storage", fontWeight = FontWeight.Bold, color = AppInk)
+                        Text(
+                            "Delete this project's private analysis data and any direct-link copy downloaded into the app. An original video selected from phone storage is left untouched.",
+                            color = AppMuted,
+                            fontSize = 12.sp
+                        )
+                        OutlinedButton(
+                            onClick = { showDeleteConfirmation = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Delete local project and downloaded copy") }
+                    }
+                }
+            }
+
+            if (showDeleteConfirmation) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteConfirmation = false },
+                    title = { Text("Delete this local project?") },
+                    text = {
+                        Text("The app will delete its project metadata, sample timeline, event reviews and any video copy downloaded through a direct HTTPS link. It will not delete an original video selected from your phone's storage.")
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val id = projectId
+                                showDeleteConfirmation = false
+                                if (id != null) scope.launch {
+                                    WorkManager.getInstance(context).cancelAllWorkByTag(
+                                        LocalAnalysisWorker.tag(id)
+                                    )
+                                    val deleted = withContext(Dispatchers.IO) {
+                                        LocalProjectStore.delete(context, id)
+                                    }
+                                    if (deleted) {
+                                        project = null
+                                        frameBitmap = null
+                                        courtCorners.clear()
+                                        markPlayerPosition = false
+                                        markEventLocation = false
+                                        message = "Local project data and downloaded copy deleted. Original selected videos remain untouched."
+                                    } else {
+                                        message = "Project data was not found."
+                                    }
+                                }
+                            }
+                        ) { Text("Delete") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteConfirmation = false }) { Text("Cancel") }
+                    }
+                )
             }
 
             Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
