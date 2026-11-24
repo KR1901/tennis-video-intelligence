@@ -12,9 +12,9 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+import com.kr1901.tennisvideo.BuildConfig
 import java.util.UUID
 import kotlin.math.min
-import com.kr1901.tennisvideo.BuildConfig
 
 class VideoApi(
     baseUrl: String,
@@ -42,7 +42,6 @@ class VideoApi(
         val preferenceKey = "session_" + UUID.nameUUIDFromBytes(
             uri.toString().toByteArray(Charsets.UTF_8)
         ).toString()
-        var uploadId = uploadPreferences?.getString(preferenceKey, null)
         var uploadLength = fileSize
 
         fun createSession(): String {
@@ -59,10 +58,7 @@ class VideoApi(
             return createdId
         }
 
-        if (uploadId == null) {
-            uploadId = createSession()
-        }
-
+        var uploadId: String = uploadPreferences?.getString(preferenceKey, null) ?: createSession()
         var offset = try {
             val serverState = getUploadOffset(uploadId)
             uploadLength = serverState.second
@@ -114,7 +110,9 @@ class VideoApi(
                         if (confirmed != null && confirmed != offset) {
                             throw IOException("Upload offset changed unexpectedly; expected $offset, got $confirmed.")
                         }
-                        if (attempt >= MAX_CHUNK_RETRIES) throw error
+                        val permanentClientError = listOf(400, 401, 403, 404, 413, 415, 422)
+                            .any { error.message?.contains("HTTP $it") == true }
+                        if (permanentClientError || attempt >= MAX_CHUNK_RETRIES) throw error
                         Thread.sleep(500L shl attempt)
                         attempt += 1
                     }
