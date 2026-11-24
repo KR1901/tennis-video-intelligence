@@ -13,7 +13,7 @@ client = TestClient(app)
 def test_resumable_upload_can_append_resume_and_finalize(tmp_path: Path, monkeypatch) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
-    monkeypatch.setenv("TVI_MAX_UPLOAD_MB", "10240")
+    monkeypatch.setenv("TVI_MAX_UPLOAD_MB", "4768")
 
     created = client.post(
         "/api/v1/videos/uploads",
@@ -88,9 +88,29 @@ def test_resumable_upload_rejects_a_file_over_the_configured_limit(
     get_settings.cache_clear()
 
 
-def test_default_upload_limit_is_ten_gibibytes(monkeypatch) -> None:
+def test_default_upload_limit_is_five_gigabytes(monkeypatch) -> None:
     get_settings.cache_clear()
     monkeypatch.delenv("TVI_MAX_UPLOAD_MB", raising=False)
 
-    assert get_settings().max_upload_mb == 10_240
+    assert get_settings().max_upload_mb == 4_768
+
+
+def test_default_upload_limit_rejects_a_file_over_five_gigabytes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    get_settings.cache_clear()
+    monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
+    monkeypatch.delenv("TVI_MAX_UPLOAD_MB", raising=False)
+
+    response = client.post(
+        "/api/v1/videos/uploads",
+        json={
+            "filename": "over-limit.mp4",
+            "content_type": "video/mp4",
+            "size_bytes": 4_768 * 1024 * 1024 + 1,
+        },
+    )
+
+    assert response.status_code == 413
+    get_settings.cache_clear()
     get_settings.cache_clear()
