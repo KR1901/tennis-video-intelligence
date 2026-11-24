@@ -6,7 +6,7 @@ Native Android prototype built with Kotlin and Jetpack Compose. It currently con
 
 - Android Studio with a compatible Android Gradle Plugin 9.5.x environment.
 - JDK 17.
-- Android SDK Platform 37 and Build Tools 36.0.0 (the app still targets API 36).
+- Android SDK Platform 36 and Build Tools 36.0.0.
 - Gradle 9.6.0.
 - An accessible backend with FFmpeg and ffprobe installed.
 
