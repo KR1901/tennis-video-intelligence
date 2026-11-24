@@ -108,6 +108,6 @@ jobs:
           APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           gh release create "$VERSION" "$APK" \
             --title "Tennis Video Intelligence $VERSION" \
-            --notes "Signed Android release. Includes Android-managed background uploads with progress and resume (up to 10 GiB), HTTPS-only networking, auto-configured hosted backend and the Liquid Glass-inspired interface. Android 14+ uses user-initiated data-transfer jobs; earlier versions use WorkManager. Backend computer-vision detections remain review candidates and require human confirmation." \
+            --notes "Signed Android release. Includes Android-managed background uploads with progress and resume (up to 5 GB), HTTPS-only networking, auto-configured hosted backend and the Liquid Glass-inspired interface. Android 14+ uses user-initiated data-transfer jobs; earlier versions use WorkManager. Backend computer-vision detections remain review candidates and require human confirmation." \
             --target "$GITHUB_SHA" \
             --latest
