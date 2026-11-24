@@ -11,8 +11,8 @@ class TennisMatchAnalyticsTest {
     fun playerBaselineSummaryUsesCalibratedFootObservations() {
         val analytics = TennisMatchAnalytics.calculate(
             sequenceOf(
-                sample(0L, player("P1", 0.4, 10.5, 1.385), player("P2", -0.5, -10.5, -1.385)),
-                sample(400L, player("P1", 0.5, 9.5, 0.385), player("P2", -0.4, -9.5, -0.385))
+                sample(0L, player("P1", 0.4, 12.5, 0.615), player("P2", -0.5, -12.5, 0.615)),
+                sample(400L, player("P1", 0.5, 11.5, -0.385), player("P2", -0.4, -11.5, -0.385))
             ),
             JSONArray()
         )
@@ -20,7 +20,7 @@ class TennisMatchAnalyticsTest {
         val p1 = analytics.players.first { it.playerId == "P1" }
         assertEquals(2, p1.observations)
         assertEquals(50.0, p1.behindBaselinePercent, 0.001)
-        assertEquals(0.885, p1.averageSignedBaselineDistanceMeters, 0.001)
+        assertEquals(0.115, p1.averageSignedBaselineDistanceMeters, 0.001)
         assertEquals(1.005, p1.sampledMovementMeters, 0.01)
     }
 
