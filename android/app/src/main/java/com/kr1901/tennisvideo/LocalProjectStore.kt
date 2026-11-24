@@ -207,14 +207,17 @@ internal object LocalProjectStore {
             val event = events.optJSONObject(index) ?: continue
             val imageX = event.optDouble("image_x", event.optDouble("ball_x", Double.NaN))
             val imageY = event.optDouble("image_y", event.optDouble("ball_y", Double.NaN))
-            val measurement = if (
-                validCorners != null && imageX.isFinite() && imageY.isFinite()
-            ) {
-                CourtProjector.project(validCorners, imageX.toFloat(), imageY.toFloat())
-            } else {
-                null
+            when {
+                points.isEmpty() -> applyMeasurement(event, null)
+                validCorners != null && imageX.isFinite() && imageY.isFinite() -> {
+                    applyMeasurement(
+                        event,
+                        CourtProjector.project(validCorners, imageX.toFloat(), imageY.toFloat())
+                    )
+                }
+                // Preserve legacy/manual event coordinates when no raw image point
+                // was stored, because they cannot be safely recalculated.
             }
-            applyMeasurement(event, measurement)
         }
         project.put("events", events)
 
