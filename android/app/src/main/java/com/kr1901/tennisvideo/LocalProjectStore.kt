@@ -161,7 +161,7 @@ internal object LocalProjectStore {
     fun exportPositionsCsv(context: Context, id: String): String {
         val project = load(context, id) ?: error("Project was not found")
         val positions = project.optJSONArray("manual_positions") ?: JSONArray()
-        val csv = StringBuilder("timestamp_ms,player_end,court_x_m,court_y_m,signed_baseline_distance_m,interpretation\\n")
+        val csv = StringBuilder("timestamp_ms,player_end,court_x_m,court_y_m,signed_baseline_distance_m,interpretation\n")
         for (index in 0 until positions.length()) {
             val position = positions.optJSONObject(index) ?: continue
             val distance = position.optDouble("baseline_distance_m")
@@ -171,7 +171,7 @@ internal object LocalProjectStore {
                 .append(position.optDouble("court_x_m")).append(',')
                 .append(position.optDouble("court_y_m")).append(',')
                 .append(distance).append(',')
-                .append(interpretation).append('\\n')
+                .append(interpretation).append('\n')
         }
         return csv.toString()
     }
