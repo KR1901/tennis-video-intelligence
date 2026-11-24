@@ -52,11 +52,7 @@ class AnalysisJobResponse(BaseModel):
     error: str | None = None
     created_at: str
     started_at: str | None = None
-    completed_at: str | None = None
-
-
-
-class ManualEventCreateRequest(BaseModel):
+    completed_at: str | None = None\n\n\nclass ManualEventCreateRequest(BaseModel):
     timestamp_seconds: float = Field(ge=0)
     event_type: Literal[
         "serve_bounce",
