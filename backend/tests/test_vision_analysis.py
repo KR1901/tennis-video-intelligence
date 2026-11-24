@@ -49,6 +49,13 @@ def test_reviewed_match_metrics_ignore_unreviewed_candidates() -> None:
                 "court_y_m": 8.0,
             },
             {
+                "timestamp_seconds": 1.5,
+                "event_type": "shot_bounce",
+                "review_status": "accepted",
+                "court_x_m": -1.2,
+                "court_y_m": -6.0,
+            },
+            {
                 "timestamp_seconds": 2.0,
                 "event_type": "racket_contact",
                 "review_status": "accepted",
@@ -65,7 +72,7 @@ def test_reviewed_match_metrics_ignore_unreviewed_candidates() -> None:
 
     metrics = calculate_reviewed_match_metrics(job)
 
-    assert metrics["accepted_event_count"] == 2
+    assert metrics["accepted_event_count"] == 3
     assert metrics["serve_placement"]["confirmed_serves"] == 1
     assert metrics["shot_placement"]["confirmed_bounces"] == 1
     assert metrics["rally_length"]["average_contacts_per_point"] is None
