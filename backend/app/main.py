@@ -1,8 +1,8 @@
 import hmac
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.analyses import router as analyses_router
 from app.api.videos import router as videos_router
