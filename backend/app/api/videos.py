@@ -107,7 +107,7 @@ def _resumable_storage() -> ResumableVideoStorage:
     "/uploads",
     response_model=ResumableUploadSessionResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a resumable upload session (up to 10 GiB)",
+    summary="Create a resumable upload session (up to 5 GB)",
 )
 async def create_resumable_upload(
     request: ResumableUploadCreateRequest,
