@@ -40,10 +40,19 @@ object BackgroundUploadScheduler {
 
         val previous = UploadRuntimeStore.state(context)
         if (previous.status in listOf("QUEUED", "UPLOADING")) {
-            if (previous.uri == uri) return true
-            throw IOException("Another video is uploading. Pause it before starting a different match.")
+            if (previous.uri != uri) {
+                throw IOException("Another video is uploading. Pause it before starting a different match.")
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                BackgroundUploadRuntimeState.userInitiatedJobRunning
+            ) {
+                return true
+            }
+            // Re-enqueue the same system job ID / unique WorkManager name. This safely
+            // restores a transfer if Android Task Manager stopped it without a callback.
+        } else {
+            UploadRuntimeStore.markQueued(context, uri, totalBytes)
         }
-        UploadRuntimeStore.markQueued(context, uri, totalBytes)
         val scheduled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             scheduleUserInitiatedJob(context, uri, totalBytes)
         } else {
