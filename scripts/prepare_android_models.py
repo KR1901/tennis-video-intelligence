@@ -3,7 +3,7 @@
 
 The binary assets are created during CI/local build and are intentionally not
 committed to Git. TrackNet V1 weights are hosted by Hugging Face under MIT;
-the Pose Landmarker task comes from Google's official MediaPipe model bucket.
+the Pose Landmarker task is downloaded from the official MediaPipe model publisher.
 """
 
 from __future__ import annotations
