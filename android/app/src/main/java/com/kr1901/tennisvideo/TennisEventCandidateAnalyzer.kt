@@ -1,20 +1,39 @@
 package com.kr1901.tennisvideo
 
-import org.json.JSONArray
-import org.json.JSONObject
 import kotlin.math.acos
 import kotlin.math.sqrt
 
+internal data class BallTrajectoryObservation(
+    val timestampMs: Long,
+    val x: Double,
+    val y: Double,
+    val confidence: Double,
+    val visibleWristPoints: List<Pair<Double, Double>> = emptyList()
+)
+
+internal data class TennisEventCandidate(
+    val eventId: String,
+    val timestampMs: Long,
+    val eventType: String,
+    val confidence: Double,
+    val turnAngleDegrees: Double,
+    val ballX: Double,
+    val ballY: Double,
+    val source: String = "TrackNet V1 ball trajectory heuristic",
+    val reviewStatus: String = "needs_review",
+    val note: String = "A ball trajectory turn was detected. This is a review candidate, not a confirmed hit or bounce."
+)
+
 internal object TennisEventCandidateAnalyzer {
-    fun deriveRecentCandidates(samples: List<JSONObject>): List<JSONObject> {
+    fun deriveRecentCandidates(samples: List<BallTrajectoryObservation>): List<TennisEventCandidate> {
         if (samples.size < 3) return emptyList()
-        val output = ArrayList<JSONObject>()
+        val output = ArrayList<TennisEventCandidate>()
         var lastCandidateTimestamp = -MIN_CANDIDATE_SPACING_MS
 
         for (index in 2 until samples.size) {
-            val first = ballPoint(samples[index - 2]) ?: continue
-            val second = ballPoint(samples[index - 1]) ?: continue
-            val third = ballPoint(samples[index]) ?: continue
+            val first = samples[index - 2]
+            val second = samples[index - 1]
+            val third = samples[index]
             if (minOf(first.confidence, second.confidence, third.confidence) < MIN_BALL_CONFIDENCE) {
                 continue
             }
@@ -31,74 +50,50 @@ internal object TennisEventCandidateAnalyzer {
             val turnAngle = acos(cosine)
             if (turnAngle < MIN_TURN_ANGLE_RADIANS) continue
 
-            val timestamp = samples[index].optLong("timestamp_ms")
+            val timestamp = third.timestampMs
             if (timestamp - lastCandidateTimestamp < MIN_CANDIDATE_SPACING_MS) continue
 
-            val nearestWrist = nearestWristDistance(samples[index], third.x, third.y)
-            val type = if (nearestWrist <= RACKET_PROXIMITY_THRESHOLD) {
-                "possible_racket_contact"
-            } else if (verticalVelocityReversed(v1y, v2y)) {
-                "possible_bounce_or_contact"
-            } else {
-                "possible_ball_direction_change"
+            val nearestWrist = nearestWristDistance(third.visibleWristPoints, third.x, third.y)
+            val type = when {
+                nearestWrist <= RACKET_PROXIMITY_THRESHOLD -> "possible_racket_contact"
+                verticalVelocityReversed(v1y, v2y) -> "possible_bounce_or_contact"
+                else -> "possible_ball_direction_change"
             }
             val turnStrength = (turnAngle / Math.PI).coerceIn(0.0, 1.0)
             val confidence = (minOf(first.confidence, second.confidence, third.confidence) *
                 (0.55 + 0.45 * turnStrength)).coerceIn(0.0, 1.0)
 
             output.add(
-                JSONObject()
-                    .put("event_id", "candidate-" + type + "-" + timestamp)
-                    .put("timestamp_ms", timestamp)
-                    .put("event_type", type)
-                    .put("source", "TrackNet V1 ball trajectory heuristic")
-                    .put("confidence", confidence)
-                    .put("review_status", "needs_review")
-                    .put("note", "A ball trajectory turn was detected. This is a review candidate, not a confirmed hit or bounce.")
-                    .put("turn_angle_degrees", Math.toDegrees(turnAngle))
-                    .put("ball_x", third.x)
-                    .put("ball_y", third.y)
+                TennisEventCandidate(
+                    eventId = "candidate-" + type + "-" + timestamp,
+                    timestampMs = timestamp,
+                    eventType = type,
+                    confidence = confidence,
+                    turnAngleDegrees = Math.toDegrees(turnAngle),
+                    ballX = third.x,
+                    ballY = third.y
+                )
             )
             lastCandidateTimestamp = timestamp
         }
         return output
     }
 
-    private fun ballPoint(sample: JSONObject): BallPoint? {
-        val ball = sample.optJSONObject("ball") ?: return null
-        if (!ball.optBoolean("detected", false)) return null
-        return BallPoint(
-            x = ball.optDouble("x", Double.NaN),
-            y = ball.optDouble("y", Double.NaN),
-            confidence = ball.optDouble("confidence", 0.0)
-        ).takeIf { it.x.isFinite() && it.y.isFinite() }
-    }
-
-    private fun nearestWristDistance(sample: JSONObject, ballX: Double, ballY: Double): Double {
-        val players = sample.optJSONArray("players") ?: JSONArray()
-        var nearest = Double.POSITIVE_INFINITY
-        for (index in 0 until players.length()) {
-            val player = players.optJSONObject(index) ?: continue
-            listOf("left_wrist", "right_wrist").forEach { key ->
-                val wrist = player.optJSONObject(key) ?: return@forEach
-                if (!wrist.optBoolean("visible", false)) return@forEach
-                val dx = wrist.optDouble("x") - ballX
-                val dy = wrist.optDouble("y") - ballY
-                nearest = minOf(nearest, sqrt(dx * dx + dy * dy))
-            }
-        }
-        return nearest
+    private fun nearestWristDistance(
+        wrists: List<Pair<Double, Double>>,
+        ballX: Double,
+        ballY: Double
+    ): Double {
+        return wrists.minOfOrNull { (x, y) ->
+            val dx = x - ballX
+            val dy = y - ballY
+            sqrt(dx * dx + dy * dy)
+        } ?: Double.POSITIVE_INFINITY
     }
 
     private fun verticalVelocityReversed(first: Double, second: Double): Boolean =
         (first < -MIN_VERTICAL_SPEED && second > MIN_VERTICAL_SPEED) ||
             (first > MIN_VERTICAL_SPEED && second < -MIN_VERTICAL_SPEED)
-
-    private data class BallPoint(
-        val x: Double,
-        val y: Double,
-        val confidence: Double
-    )
 
     private const val MIN_BALL_CONFIDENCE = 0.58
     private const val MIN_FRAME_DISPLACEMENT = 0.002
