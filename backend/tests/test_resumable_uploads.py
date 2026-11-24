@@ -93,4 +93,23 @@ def test_default_upload_limit_is_ten_gibibytes(monkeypatch) -> None:
     monkeypatch.delenv("TVI_MAX_UPLOAD_MB", raising=False)
 
     assert get_settings().max_upload_mb == 10_240
+
+
+def test_default_upload_limit_rejects_a_file_over_ten_gibibytes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    get_settings.cache_clear()
+    monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
+    monkeypatch.delenv("TVI_MAX_UPLOAD_MB", raising=False)
+
+    response = client.post(
+        "/api/v1/videos/uploads",
+        json={
+            "filename": "over-limit.mp4",
+            "content_type": "video/mp4",
+            "size_bytes": 10_240 * 1024 * 1024 + 1,
+        },
+    )
+
+    assert response.status_code == 413
     get_settings.cache_clear()

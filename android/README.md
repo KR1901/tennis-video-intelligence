@@ -47,7 +47,7 @@ Install FFmpeg so both `ffmpeg` and `ffprobe` are available on the backend PATH.
 
 ## Current app flow
 
-1. Choose a local video through Android's document picker. Uploads use a 16 MiB resumable chunk protocol, byte-offset acknowledgements, bounded retries and progress reporting. The session ID is kept on-device so selecting the same document again can resume an interrupted upload for up to seven days. The configured total file-size ceiling is 10 GiB.
+1. Choose a local video through Android's document picker. Uploads use a 16 MiB resumable chunk protocol, byte-offset acknowledgements, bounded retries and progress reporting. Android 14+ runs the transfer as a user-initiated data-transfer job; older Android versions use a persistent WorkManager foreground worker. The selected document permission and upload session are persisted so the transfer can continue after the app is closed, and retries resume from the last committed byte. The configured total file-size ceiling is 5 GB.
 2. Inspect duration, resolution, frame rate and codec through ffprobe; optionally enter the shared API bearer token when the backend is configured to require it.
 3. Extract a JPEG frame at a chosen timestamp.
 4. Request a heuristic green-region court-corner suggestion or tap the four corners manually in the order far-left, far-right, near-right, near-left. The app overlays the selected points so they can be checked before saving.
@@ -67,7 +67,7 @@ Position averages and heatmaps are prototype indicators based on generic person 
 
 ## Release signing (Android)
 
-The release workflow builds version `0.4.0`. A signed release is produced only when the repository has all four Actions secrets configured:
+The release workflow builds version `0.5.0`. A production APK is wired to the hosted API at build time via the `TVI_API_BASE_URL` repository variable and `TVI_API_TOKEN` Actions secret; when both are configured, no backend URL or token entry is needed in the app. A signed release is produced only when the repository has all four Actions secrets configured:
 
 - `ANDROID_KEYSTORE_BASE64` — base64-encoded keystore file.
 - `ANDROID_KEYSTORE_PASSWORD` — keystore password.
@@ -76,9 +76,16 @@ The release workflow builds version `0.4.0`. A signed release is produced only w
 
 Store the keystore securely offline and back it up. Do not commit it to the public repository. The same signing key must be retained for future app updates. Without all four secrets the workflow produces an explicitly labelled **unsigned** release APK artifact; that file is not installable as a normal production app until signed with your release key.
 
-Run the workflow from GitHub Actions → Android Release APK → Run workflow. When signing is configured, the workflow uploads the signed APK and publishes the `v0.4.0` GitHub Release. When signing is absent, it uploads only the unsigned release artifact for inspection.
+Run the workflow from GitHub Actions → Android Release APK → Run workflow. When signing is configured, the workflow uploads the signed APK and publishes the `v0.5.0` GitHub Release. When signing is absent, it uploads only the unsigned release artifact for inspection.
 
 
 ## API bearer-token configuration
 
 For a single-instance private deployment, set `TVI_API_TOKEN` to a long random value and set `TVI_ENVIRONMENT=production`. The backend refuses to start in production mode without this token and requires `Authorization: Bearer <token>` on API routes (health and API documentation remain public). Enter the same token in the app's backend connection screen. This is a shared service token, not multi-user identity, account isolation or per-user media ownership. Put the backend behind HTTPS before using real footage; the release Android manifest disallows cleartext HTTP.
+
+
+### Background-transfer behaviour
+
+On Android 14 and newer, an upload started from the visible app uses a user-initiated data-transfer job with a system notification and saved URI grant. On Android 8 through 13, it uses a long-running WorkManager foreground worker. Both paths can continue when you leave the app or swipe it away from Recents, and both resume from the last server-committed chunk after a system/network interruption. Force-stopping the app, uninstalling it, removing its document permission, or using Android's system Stop control can stop the transfer; reopen the app and tap Upload in background to resume. Network availability and device policy still affect when Android runs retries.
+
+The release workflow reads the backend URL from the GitHub Actions repository variable `TVI_API_BASE_URL` and the shared API bearer token from the `TVI_API_TOKEN` Actions secret. The token is injected at release build time, not committed in the repository.

@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -24,15 +25,19 @@ class VideoApi(
 ) {
     private val baseUrl = baseUrl.trim().trimEnd('/')
 
-    private companion object {
+    companion object {
         const val UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024
         const val MAX_CHUNK_RETRIES = 3
-        const val MAX_UPLOAD_BYTES = 10L * 1024L * 1024L * 1024L
+        const val MAX_UPLOAD_BYTES = 4_768L * 1024L * 1024L
     }
 
     fun health(): JSONObject = requestJson("/health", "GET")
 
-    fun uploadVideo(uri: Uri, onProgress: (Long, Long) -> Unit = { _, _ -> }): JSONObject {
+    fun uploadVideo(
+        uri: Uri,
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+        isCancelled: () -> Boolean = { false }
+    ): JSONObject {
         val fileName = displayName(uri)
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
         val fileSize = fileSize(uri)
@@ -40,7 +45,7 @@ class VideoApi(
             throw IOException("Android could not determine the selected video's file size.")
         }
         if (fileSize > MAX_UPLOAD_BYTES) {
-            throw IOException("This video is larger than the 10 GiB upload limit.")
+            throw IOException("This video is larger than the 5 GB upload limit.")
         }
 
         val preferenceKey = "session_" + UUID.nameUUIDFromBytes(
@@ -96,12 +101,14 @@ class VideoApi(
         contentResolver.openInputStream(uri)?.use { source ->
             skipFully(source, offset)
             while (offset < fileSize) {
+                if (isCancelled()) throw InterruptedIOException("Upload paused; the next run will resume from the saved server offset.")
                 val chunkLength = min(UPLOAD_CHUNK_BYTES.toLong(), fileSize - offset).toInt()
                 val chunk = ByteArray(chunkLength)
                 readFully(source, chunk)
 
                 var attempt = 0
                 while (true) {
+                    if (isCancelled()) throw InterruptedIOException("Upload paused; the next run will resume from the saved server offset.")
                     try {
                         val committedOffset = appendUploadChunk(uploadId, offset, chunk)
                         if (committedOffset != offset + chunkLength) {
@@ -110,6 +117,7 @@ class VideoApi(
                         offset = committedOffset
                         break
                     } catch (error: IOException) {
+                        if (isCancelled() || error is InterruptedIOException) throw error
                         val confirmed = runCatching { getUploadOffset(uploadId).first }.getOrNull()
                         if (confirmed == offset + chunkLength) {
                             // The server committed the chunk but the response was lost.

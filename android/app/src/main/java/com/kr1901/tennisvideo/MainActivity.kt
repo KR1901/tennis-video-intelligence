@@ -3,6 +3,7 @@ package com.kr1901.tennisvideo
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.os.Build
 import android.net.Uri
 import android.widget.MediaController
 import android.widget.VideoView
@@ -40,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -66,9 +68,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kr1901.tennisvideo.data.VideoApi
+import com.kr1901.tennisvideo.upload.BackgroundUploadScheduler
+import com.kr1901.tennisvideo.upload.UploadRuntimeStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
@@ -161,12 +167,26 @@ private fun TennisVideoApp() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var apiBaseUrl by remember { mutableStateOf(if (BuildConfig.DEBUG) "http://10.0.2.2:8000" else "") }
-    var apiToken by remember { mutableStateOf("") }
+    val savedConnection = remember { UploadRuntimeStore.connection(context) }
+    val savedTransfer = remember { UploadRuntimeStore.state(context) }
+    var apiBaseUrl by remember {
+        mutableStateOf(
+            BuildConfig.TVI_API_BASE_URL.ifBlank {
+                savedConnection.baseUrl.ifBlank {
+                    if (BuildConfig.DEBUG) "http://10.0.2.2:8000" else ""
+                }
+            }
+        )
+    }
+    var apiToken by remember {
+        mutableStateOf(BuildConfig.TVI_API_TOKEN.ifBlank { savedConnection.apiToken })
+    }
     var showVideoPreview by remember { mutableStateOf(false) }
-    var selectedUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    var selectedName by remember { mutableStateOf("No video selected") }
-    var videoId by remember { mutableStateOf<String?>(null) }
+    var selectedUri by remember { mutableStateOf(savedTransfer.uri) }
+    var selectedName by remember { mutableStateOf(savedTransfer.displayName.ifBlank { "No video selected" }) }
+    var videoId by remember { mutableStateOf(savedTransfer.videoId) }
+    var uploadStatus by remember { mutableStateOf(savedTransfer.status) }
+    var uploadError by remember { mutableStateOf(savedTransfer.error) }
     var calibrationId by remember { mutableStateOf<String?>(null) }
     var frameBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var timestampText by remember { mutableStateOf("10.0") }
@@ -174,11 +194,27 @@ private fun TennisVideoApp() {
     var selectedPlayerPoint by remember { mutableStateOf<Pair<Float, Float>?>(null) }
     var mediaSummary by remember { mutableStateOf("Video metadata has not been inspected.") }
     var measurementSummary by remember { mutableStateOf("No position measured yet.") }
-    var statusMessage by remember { mutableStateOf("Connect to the backend to begin.") }
+    var statusMessage by remember {
+        mutableStateOf(
+            when (savedTransfer.status) {
+                "UPLOADING", "QUEUED" -> "Upload continues in the background."
+                "PAUSED" -> "Upload paused by the system; it will resume automatically."
+                "COMPLETED" -> "Upload complete. Video ID: ${savedTransfer.videoId ?: ""}"
+                "FAILED" -> "Upload failed: ${savedTransfer.error ?: "Unknown error"}"
+                else -> "Ready to connect and analyse a match."
+            }
+        )
+    }
     var busy by remember { mutableStateOf(false) }
-    var uploadProgress by remember { mutableStateOf(0f) }
-    var uploadedBytes by remember { mutableStateOf(0L) }
-    var uploadTotalBytes by remember { mutableStateOf(0L) }
+    var uploadProgress by remember {
+        mutableStateOf(
+            if (savedTransfer.totalBytes > 0L) {
+                savedTransfer.uploadedBytes.toFloat() / savedTransfer.totalBytes.toFloat()
+            } else 0f
+        )
+    }
+    var uploadedBytes by remember { mutableStateOf(savedTransfer.uploadedBytes) }
+    var uploadTotalBytes by remember { mutableStateOf(savedTransfer.totalBytes) }
     val calibrationPoints = remember { mutableStateListOf<Pair<Float, Float>>() }
     var analysisId by remember { mutableStateOf<String?>(null) }
     var analysisStatus by remember { mutableStateOf("Not started") }
@@ -249,23 +285,35 @@ private fun TennisVideoApp() {
                     )
                 }
                 selectedUri = uri
+                selectedName = runCatching {
+                    context.contentResolver.query(
+                        uri,
+                        arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                        null,
+                        null,
+                        null
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val column = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                            if (column >= 0) cursor.getString(column) else null
+                        } else null
+                    }
+                }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/') ?: "Selected video"
+                UploadRuntimeStore.saveSelection(context, uri, selectedName)
                 uploadProgress = 0f
                 uploadedBytes = 0L
                 uploadTotalBytes = 0L
+                uploadStatus = "IDLE"
+                uploadError = null
+                videoId = null
                 analysisId = null
                 analysisSummary = null
                 eventCandidates.clear()
                 analysisStatus = "Not started"
-                selectedName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected video"
-                videoId = null
                 calibrationId = null
                 frameBitmap = null
                 calibrationPoints.clear()
                 selectedPlayerPoint = null
-                analysisId = null
-                analysisSummary = null
-                eventCandidates.clear()
-                analysisStatus = "Not started"
                 statusMessage = "Video selected. Upload it to start."
             }
         }
@@ -277,6 +325,33 @@ private fun TennisVideoApp() {
         apiToken,
         context.getSharedPreferences("tvi_upload_state", android.content.Context.MODE_PRIVATE)
     )
+
+    LaunchedEffect(context) {
+        while (isActive) {
+            val transfer = UploadRuntimeStore.state(context)
+            if (transfer.totalBytes > 0L) {
+                uploadTotalBytes = transfer.totalBytes
+                uploadedBytes = transfer.uploadedBytes
+                uploadProgress = (transfer.uploadedBytes.toFloat() / transfer.totalBytes.toFloat()).coerceIn(0f, 1f)
+            }
+            uploadStatus = transfer.status
+            uploadError = transfer.error
+            if (!transfer.videoId.isNullOrBlank() && videoId != transfer.videoId) {
+                videoId = transfer.videoId
+                analysisId = null
+                calibrationId = null
+                analysisSummary = null
+                eventCandidates.clear()
+                statusMessage = "Background upload complete. Video ID: ${transfer.videoId}"
+            } else if (transfer.status == "PAUSED") {
+                statusMessage = "Upload paused by Android; the system will retry from the last saved chunk."
+            } else if (transfer.status == "FAILED" && !transfer.error.isNullOrBlank()) {
+                statusMessage = "Upload failed: ${transfer.error}"
+            }
+            delay(1_000L)
+        }
+    }
+
 
     fun refreshAnalysis() {
         val id = analysisId ?: return
@@ -398,44 +473,49 @@ private fun TennisVideoApp() {
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     SectionHeading("1", "Backend connection")
-                    OutlinedTextField(
-                        value = apiBaseUrl,
-                        onValueChange = { apiBaseUrl = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Backend URL") },
-                        placeholder = { Text("https://your-api.example.com") },
-                        supportingText = {
-                            Text("Production requires HTTPS. http://10.0.2.2:8000 is only for the Android emulator in a debug build.")
-                        },
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = apiToken,
-                        onValueChange = { apiToken = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("API bearer token (required in production)") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true
-                    )
-                    OutlinedButton(
-                        onClick = {
-                            scope.launch {
-                                busy = true
-                                statusMessage = "Checking backend..."
-                                try {
-                                    val response = withContext(Dispatchers.IO) { api().health() }
-                                    statusMessage = "Backend connected: ${response.optString("status", "ok")}"
-                                } catch (error: Exception) {
-                                    statusMessage = "Connection failed: ${error.message}"
-                                } finally {
-                                    busy = false
+                    if (BuildConfig.TVI_API_BASE_URL.isNotBlank() && BuildConfig.TVI_API_TOKEN.isNotBlank()) {
+                        Text("Hosted backend is configured automatically for this release.", color = CourtGreen, fontSize = 13.sp)
+                    } else {
+                        OutlinedTextField(
+                            value = apiBaseUrl,
+                            onValueChange = { apiBaseUrl = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Backend URL") },
+                            placeholder = { Text("https://your-api.example.com") },
+                            supportingText = {
+                                Text("Production requires HTTPS. The emulator address only works in debug builds.")
+                            },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = apiToken,
+                            onValueChange = { apiToken = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("API bearer token") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    busy = true
+                                    statusMessage = "Checking backend..."
+                                    try {
+                                        val response = withContext(Dispatchers.IO) { api().health() }
+                                        UploadRuntimeStore.saveConnection(context, apiBaseUrl, apiToken)
+                                        statusMessage = "Backend connected: ${response.optString("status", "ok")}"
+                                    } catch (error: Exception) {
+                                        statusMessage = "Connection failed: ${error.message}"
+                                    } finally {
+                                        busy = false
+                                    }
                                 }
-                            }
-                        },
-                        enabled = !busy,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Check backend")
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Check backend")
+                        }
                     }
                 }
             }
@@ -450,7 +530,7 @@ private fun TennisVideoApp() {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             onClick = { videoPicker.launch(arrayOf("video/*")) },
-                            enabled = !busy,
+                            enabled = !busy && uploadStatus !in listOf("QUEUED", "UPLOADING"),
                             modifier = Modifier.weight(1f)
                         ) {
                             Text("Choose video")
@@ -461,54 +541,75 @@ private fun TennisVideoApp() {
                                 if (uri != null) {
                                     scope.launch {
                                         busy = true
-                                        statusMessage = "Uploading video..."
-                                        uploadProgress = 0f
-                                        uploadedBytes = 0L
-                                        uploadTotalBytes = 0L
+                                        statusMessage = "Checking backend before scheduling upload..."
                                         try {
-                                            val response = withContext(Dispatchers.IO) {
-                                                api().uploadVideo(uri) { sent, total ->
-                                                    scope.launch {
-                                                        uploadedBytes = sent
-                                                        uploadTotalBytes = total
-                                                        uploadProgress = if (total > 0L) {
-                                                            sent.toFloat() / total.toFloat()
-                                                        } else 0f
-                                                    }
-                                                }
+                                            if (apiBaseUrl.isBlank()) {
+                                                throw IllegalStateException("The hosted backend is not configured yet.")
                                             }
-                                            videoId = response.getString("video_id")
-                                            analysisId = null
-                                            analysisSummary = null
-                                            eventCandidates.clear()
-                                            calibrationId = null
-                                            calibrationPoints.clear()
-                                            selectedPlayerPoint = null
-                                            statusMessage = "Upload complete. Video ID: $videoId"
+                                            if (!BuildConfig.DEBUG && !apiBaseUrl.startsWith("https://")) {
+                                                throw IllegalStateException("Production uploads require an HTTPS backend.")
+                                            }
+                                            UploadRuntimeStore.saveConnection(context, apiBaseUrl, apiToken)
+                                            withContext(Dispatchers.IO) { api().health() }
+                                            val scheduled = BackgroundUploadScheduler.schedule(context, uri)
+                                            if (!scheduled) {
+                                                throw IllegalStateException("Android could not schedule the background transfer.")
+                                            }
+                                            uploadTotalBytes = BackgroundUploadScheduler.fileSize(context, uri)
+                                            uploadedBytes = UploadRuntimeStore.state(context).uploadedBytes
+                                            uploadProgress = if (uploadTotalBytes > 0L) {
+                                                uploadedBytes.toFloat() / uploadTotalBytes.toFloat()
+                                            } else 0f
+                                            uploadStatus = "QUEUED"
+                                            statusMessage = "Upload started. You can close the app; Android will continue it in the background."
                                         } catch (error: Exception) {
-                                            statusMessage = "Upload failed: ${error.message}"
+                                            uploadStatus = "FAILED"
+                                            uploadError = error.message
+                                            statusMessage = "Could not start upload: ${error.message}"
                                         } finally {
                                             busy = false
                                         }
                                     }
                                 }
                             },
-                            enabled = selectedUri != null && !busy,
+                            enabled = selectedUri != null && !busy && uploadStatus != "COMPLETED",
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("Upload")
+                            Text(
+                                if (uploadStatus in listOf("QUEUED", "UPLOADING", "PAUSED")) {
+                                    "Resume / check upload"
+                                } else {
+                                    "Upload in background"
+                                }
+                            )
                         }
                     }
-                    if (uploadTotalBytes > 0L && (busy || uploadProgress >= 1f)) {
+                    if (uploadTotalBytes > 0L && uploadStatus in listOf("QUEUED", "UPLOADING", "PAUSED", "COMPLETED")) {
                         LinearProgressIndicator(
                             progress = { uploadProgress.coerceIn(0f, 1f) },
                             modifier = Modifier.fillMaxWidth()
                         )
                         Text(
-                            "${formatBytes(uploadedBytes)} of ${formatBytes(uploadTotalBytes)} · ${"%.0f".format(Locale.US, uploadProgress * 100f)}%",
+                            "${formatBytes(uploadedBytes)} of ${formatBytes(uploadTotalBytes)} · ${"%.0f".format(Locale.US, uploadProgress * 100f)}% · ${uploadStatus.lowercase()}",
                             color = Muted,
                             fontSize = 12.sp
                         )
+                    }
+                    if (uploadStatus in listOf("QUEUED", "UPLOADING", "PAUSED")) {
+                        OutlinedButton(
+                            onClick = {
+                                BackgroundUploadScheduler.cancel(context)
+                                uploadStatus = "PAUSED"
+                                statusMessage = "Upload paused. Tap Upload in background to resume."
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Pause upload")
+                        }
+                    }
+                    if (uploadStatus == "FAILED" && !uploadError.isNullOrBlank()) {
+                        Text(uploadError ?: "", color = Color(0xFFB3261E), fontSize = 12.sp)
                     }
                     if (videoId != null) {
                         Text("Video ID: $videoId", color = CourtGreen, fontSize = 12.sp)
