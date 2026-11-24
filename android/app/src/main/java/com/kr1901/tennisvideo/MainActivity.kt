@@ -48,7 +48,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -137,7 +136,6 @@ private fun LocalTennisVideoApp() {
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var showVideoPlayback by remember { mutableStateOf(false) }
     val courtCorners = remember { mutableStateListOf<Pair<Float, Float>>() }
-    val candidateTypeDrafts = remember { mutableStateMapOf<String, String>() }
 
     suspend fun refreshProjectLibrary() {
         val result = withContext(Dispatchers.IO) {
@@ -1212,10 +1210,10 @@ private fun LocalTennisVideoApp() {
                                 fontSize = 11.sp
                             )
                             Text(event.optString("note"), color = AppMuted, fontSize = 11.sp)
+                            var candidateType by remember(eventId) {
+                                mutableStateOf(event.optString("event_type"))
+                            }
                             if (eventStatus == "needs_review") {
-                                var candidateType by remember(eventId) {
-                                    mutableStateOf(event.optString("event_type"))
-                                }
                                 OutlinedTextField(
                                     value = candidateType,
                                     onValueChange = { candidateType = it },
@@ -1224,7 +1222,6 @@ private fun LocalTennisVideoApp() {
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
-                                candidateTypeDrafts[eventId] = candidateType
                             }
                             OutlinedButton(
                                 onClick = {
@@ -1272,7 +1269,7 @@ private fun LocalTennisVideoApp() {
                                                         id,
                                                         eventId,
                                                         true,
-                                                        candidateTypeDrafts[eventId]?.trim()?.takeIf { it.isNotBlank() }
+                                                        candidateType.trim().takeIf { it.isNotBlank() }
                                                             ?: event.optString("event_type")
                                                     )
                                                     LocalProjectStore.load(context, id)
