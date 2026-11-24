@@ -32,6 +32,11 @@ class LocalAnalysisWorker(
             .takeIf { it == 400L || it == 200L || it == 100L } ?: DEFAULT_FRAME_INTERVAL_MS
         val project = LocalProjectStore.load(applicationContext, projectId)
             ?: return@withContext Result.failure()
+        val runId = inputData.getString(KEY_RUN_ID)?.takeIf { it.isNotBlank() }
+            ?: LEGACY_RUN_ID
+        if (!LocalProjectStore.isCurrentAnalysisRun(applicationContext, projectId, runId)) {
+            return@withContext Result.success()
+        }
         val durationMs = project.optLong("duration_ms", 0L)
         val contentUri = project.optString("content_uri")
         if (durationMs <= 0L || contentUri.isBlank()) {
@@ -212,6 +217,9 @@ class LocalAnalysisWorker(
         }
 
         if (isStopped) return@withContext Result.retry()
+        if (!LocalProjectStore.isCurrentAnalysisRun(applicationContext, projectId, runId)) {
+            return@withContext Result.success()
+        }
 
         LocalProjectStore.appendSamples(applicationContext, projectId, additions)
         val recentSamples = LocalProjectStore.load(applicationContext, projectId)
@@ -251,12 +259,16 @@ class LocalAnalysisWorker(
         setProgress(workDataOf(KEY_PROGRESS_PCT to progress))
 
         if (isStopped) return@withContext Result.retry()
+        if (!LocalProjectStore.isCurrentAnalysisRun(applicationContext, projectId, runId)) {
+            return@withContext Result.success()
+        }
 
         if (!completed) {
             val nextRequest = OneTimeWorkRequestBuilder<LocalAnalysisWorker>()
                 .setInputData(
                     workDataOf(
                         KEY_PROJECT_ID to projectId,
+                        KEY_RUN_ID to runId,
                         KEY_START_MS to nextStartMs,
                         KEY_FRAME_INTERVAL_MS to frameIntervalMs
                     )
@@ -264,7 +276,7 @@ class LocalAnalysisWorker(
                 .addTag(tag(projectId))
                 .build()
             WorkManager.getInstance(applicationContext).enqueueUniqueWork(
-                workName(projectId, nextStartMs),
+                workName(projectId, runId, nextStartMs),
                 ExistingWorkPolicy.KEEP,
                 nextRequest
             )
@@ -385,6 +397,8 @@ class LocalAnalysisWorker(
         const val KEY_START_MS = "start_ms"
         const val KEY_FRAME_INTERVAL_MS = "frame_interval_ms"
         const val KEY_PROGRESS_PCT = "progress_pct"
+        const val KEY_RUN_ID = "run_id"
+        private const val LEGACY_RUN_ID = "legacy"
         private const val DEFAULT_FRAME_INTERVAL_MS = 200L
         private const val CHUNK_DURATION_MS = 5_000L
         private const val POSE_SAMPLE_EVERY_N_FRAMES = 2
@@ -395,7 +409,10 @@ class LocalAnalysisWorker(
         private const val PIXEL_CHANGE_THRESHOLD = 72
 
         fun tag(projectId: String): String = "tvi-local-analysis-" + projectId
+        fun workName(projectId: String, runId: String, startMs: Long): String =
+            "tvi-local-analysis-" + projectId + "-" + runId + "-" + startMs
+
         fun workName(projectId: String, startMs: Long): String =
-            "tvi-local-analysis-" + projectId + "-" + startMs
+            workName(projectId, LEGACY_RUN_ID, startMs)
     }
 }
