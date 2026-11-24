@@ -1,141 +1,52 @@
 # Tennis Video Intelligence
 
-AI-assisted tennis match analysis from video. The long-term goal is to turn a match recording into video-linked, court-calibrated visual analytics: player positioning, serve and return patterns, shot placement, rally structure, movement heatmaps and tactical reports.
+An Android-first tennis video analysis prototype. The current client processes match videos on the phone and does not require a permanently hosted API server.
 
-> **Project status: offline Android foundation in progress.** The Android app is being redesigned to read videos and process them locally without a hosted backend. The current offline pass is a coarse frame sampler, not a validated tennis player/ball tracking system. The previous FastAPI/OpenCV prototype remains in the repository for research and comparison.
+> **Status: on-device analysis prototype.** This branch integrates generic two-person pose estimation (MediaPipe Pose Landmarker Lite), tennis-ball candidate inference (TrackNet V1), manually verified court calibration, court-plane projections, reviewable trajectory events, manual event/location correction, mini-court visualisation and local SVG/PNG/PDF/CSV reports. These components are not yet validated to generate official or decision-grade tennis statistics.
 
-## Product direction
+## What the Android app supports
 
-The app will support two input paths:
+- Select a local video from Android storage, or optionally download an authorised direct HTTPS video-file URL. The app does not upload footage to a backend.
+- Enforce a local 4,768 MiB ceiling (just under 5 GB).
+- Preview frames and save manual court-corner calibration. A green-region colour suggestion may help initial setup but must be checked.
+- Run background on-device pose/ball inference in bounded WorkManager chunks.
+- Project player feet and ball candidate points into court metres after a valid four-corner calibration.
+- Review event candidates, relabel/accept/reject them, and manually enter timestamped serve/shot/event locations.
+- Inspect a mini-court with recent player trails, density dots and ball candidates.
+- Export the sample timeline, event review and manual positions as CSV, plus SVG/PNG/PDF court reports.
 
-1. Upload a video file from the Android app.
-2. Import a link only when the source is authorised and technically accessible. A URL is not a promise that the app can download arbitrary YouTube, broadcast or subscription-streaming content.
+See the [Android guide](android/README.md), [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md).
 
-The analysis pipeline is designed around the following stages:
+## Input and privacy
 
-1. **Ingest** — validate, store and fingerprint the source video.
-2. **Inspect** — probe codec, duration, frame rate, resolution and audio/video streams.
-3. **Calibrate** — use a manual four-corner selection or inspect a heuristic green-court suggestion before mapping image coordinates to court coordinates.
-4. **Detect candidates** — run generic OpenCV person proposals and colour-based tennis-ball candidates on sampled frames; these are unverified and are not tennis-trained multi-object tracks.
-5. **Review events** — inspect low-confidence trajectory-change candidates, accept/reject/relabel them, or add a manually confirmed event with a timestamp.
-6. **Calculate** — derive event counts and positioning summaries; serve/shot/rally/tactical event counts only use human-accepted labels.
-7. **Visualise** — inspect player-position heatmaps and export an SVG positioning report.
+Local videos are read through Android's document picker and remain in their selected storage location. Direct link import downloads only a direct HTTPS video response into app-private storage, with HTTP Range resume where the server supports it. The app does not scrape YouTube/watch pages, playlists, DRM or subscription streams. Analysis runs locally; the internet permission is used only for the optional direct-link workflow. Model binaries are downloaded from their licensed upstream sources and packaged during GitHub Actions builds rather than checked into Git.
 
-## Current prototype workflow
+## Accuracy limits
 
-- Upload and inspect a tennis video.
-- Preview any timestamped frame.
-- Manually calibrate the four outer court corners, or review a heuristic green-region corner suggestion.
-- Project a selected foot / ground-contact point into court metres.
-- Start a sampled CV analysis and review near/far position candidates and heatmaps.
-- Review automatic event candidates or add manually confirmed event labels.
-- Export the positioning report as SVG.
-
-The prototype does not yet provide reliable player identity tracking, validated ball tracking, automatic serve/shot recognition, or production-quality match statistics. The generic HOG / colour-blob detectors are intentionally labelled as candidates.
+Pose detections are generic body poses; P1/P2 are temporary spatial associations, not verified tennis-player identities. TrackNet V1 ball outputs are candidate points on a 5 fps sampling grid, not a robust full-frame-rate track. Event candidates are heuristic and stay unconfirmed until reviewed. The app has no trained court-line detector, camera movement segmentation, automatic serve/shot classifier, bounce validator, point constructor or validated winner/error model. Distances in metres require correct manual calibration and a stable camera. See the roadmap for the validation work still required.
 
 ## Repository layout
 
 ```text
-backend/       FastAPI ingestion API and analysis service boundaries
-android/       Kotlin + Jetpack Compose client prototype
-docs/          Architecture, metric definitions, reliability and delivery roadmap
-.github/       CI workflow and issue templates
+android/       Kotlin + Jetpack Compose offline-first Android app
+backend/       Legacy FastAPI/OpenCV research prototype (not required by app)
+scripts/       Reproducible download and ONNX conversion of licensed model assets
+docs/          Architecture, metric definitions, reliability and roadmap
+.github/       CI and release workflows
 ```
 
-## Legacy backend prototype (not required by the Android app)
+## Legacy backend
 
-The following instructions apply only to the older FastAPI research service. The Android app does not connect to it.
+The previous FastAPI prototype remains available for development and algorithm comparisons. It is not required by the Android app. See the [legacy backend guide](backend/README.md) if you need to run it locally.
 
+## Android release signing
 
-Requirements: Python 3.11 or newer.
+The release workflow produces a signed APK only when all four repository Actions secrets are configured: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Without them the workflow uploads an explicitly unsigned release artifact, not a production-installable GitHub Release.
 
-```bash
-cd backend
-python -m venv .venv
+## Model licences
 
-# macOS / Linux
-source .venv/bin/activate
+- TrackNet V1 tennis checkpoint: MIT, see `android/THIRD_PARTY_NOTICES_MODELS.txt`.
+- MediaPipe Pose Landmarker Lite / MediaPipe Tasks: Apache 2.0.
+- ONNX Runtime Android: MIT.
 
-# Windows PowerShell
-# .venv\\Scripts\\Activate.ps1
-
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
-uvicorn app.main:app --reload
-```
-
-Open `http://127.0.0.1:8000/docs` for the API documentation and `http://127.0.0.1:8000/health` for the health check.
-
-### Legacy container deployment
-
-A backend image definition is provided at `backend/Dockerfile`. Build and run it with a persistent volume and a strong token:
-
-```bash
-docker build -t tennis-video-intelligence-api ./backend
-export TVI_API_TOKEN="$(openssl rand -hex 32)"
-printf 'Save this token securely and enter it in the Android app: %s\n' "$TVI_API_TOKEN"
-docker run --name tvi-api --restart unless-stopped \
-  -p 8000:8000 \
-  -e TVI_API_TOKEN="$TVI_API_TOKEN" \
-  -v tvi-video-data:/data \
-  tennis-video-intelligence-api
-```
-
-Put a TLS-terminating reverse proxy or managed HTTPS ingress in front of the container and point the Android release app at that HTTPS hostname. The volume must have at least 10 GiB plus operational headroom. This container runs one API worker for the local resumable-upload store; it is a single-instance deployment starter, not a horizontally scalable production platform.
-
-### Legacy API upload example
-
-```bash
-curl -X POST "http://127.0.0.1:8000/api/v1/videos" \\
-  -H "accept: application/json" \\
-  -F "file=@/path/to/your-match.mp4"
-```
-
-The API validates uploads, supports resumable 16 MiB chunks up to 10 GiB per file, inspects media with ffprobe, extracts timestamped frames, stores manual court calibrations, suggests green-region court corners for human confirmation, and starts a local background CV analysis job. Use `POST /api/v1/videos/{video_id}/analyses` to start the job, `GET /api/v1/analyses/{analysis_id}` for status and positioning, `GET /api/v1/analyses/{analysis_id}/events` to review candidates, and the `/events` POST routes to accept/reject/relabel or add human-confirmed events. `GET /api/v1/analyses/{analysis_id}/report.svg` exports an SVG. These endpoints are documented at `/docs`. The local storage adapter uses a persistent disk directory and in-process background tasks; a durable queue, multi-user isolation, shared object storage, per-user quotas and production-scale worker orchestration are not yet implemented.
-
-## Android prototype
-
-See [the Android setup and usage guide](android/README.md). The app includes resumable 10 GiB video uploads, progress and retry handling, HTTPS-only production networking, Liquid Glass-inspired Android surfaces, court calibration, sampled candidate analysis, event review, playback, and SVG/PNG/PDF reports. Debug and release builds are checked by GitHub Actions.
-
-## Release signing
-
-The Android release workflow produces a signed APK only when all four repository Actions secrets are configured: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Without them it deliberately publishes only an unsigned release artifact, not a production GitHub Release. See [Android release setup](android/README.md#release-signing-android).
-
-## Legacy backend configuration
-
-Environment variables use the `TVI_` prefix:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `TVI_ENVIRONMENT` | `development` | Runtime environment |
-| `TVI_STORAGE_DIR` | `./data/videos` | Local uploaded-video directory |
-| `TVI_MAX_UPLOAD_MB` | `10240` | Maximum upload size in MiB (10 GiB per file) |
-| `TVI_ALLOWED_ORIGINS` | `http://localhost:8080` | CORS origins, comma-separated |
-| `TVI_API_TOKEN` | empty | Optional shared bearer token; required when `TVI_ENVIRONMENT=production` |
-
-Do not expose the development server directly to the public internet. Production deployments still need individual user identity and access isolation, quotas, durable job processing, private object storage, malware/content checks and retention controls. The optional bearer token is a shared service credential, not multi-user authentication. Do not expose the local-file backend publicly without HTTPS and additional operational hardening.
-
-## Design principles
-
-- **Video-backed evidence:** each event and metric should link to the frame range that supports it.
-- **No fabricated precision:** missing or low-confidence detections must be shown as missing or uncertain, not silently estimated.
-- **Calibration before metres:** distances in metres require valid court geometry and a known camera transform.
-- **Separate observation from inference:** detected coordinates, classified events and derived statistics are distinct data layers.
-- **Human correction:** users must be able to review and fix important event labels and tracking failures.
-- **Reproducible analysis:** record model versions, processing settings, input fingerprints and analysis versions.
-- **Privacy by default:** uploaded match footage is user content; avoid public sharing and retain it only according to an explicit policy.
-
-## Development status
-
-See [the roadmap](docs/roadmap.md) and [architecture](docs/architecture.md). The legacy API tests run with:
-
-```bash
-cd backend
-pytest
-ruff check .
-ruff format --check .
-```
-
-## Licensing
-
-The original code in this repository is licensed under Apache-2.0. This does not automatically grant rights to third-party video footage, datasets, pretrained model weights, data feeds or external services. Each adopted dependency, model and dataset must be reviewed under its own licence and terms before distribution or commercial use.
+The original application source is Apache-2.0. Model weights, datasets and match footage retain their own licences and terms.
