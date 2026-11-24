@@ -1,16 +1,16 @@
 # Android application
 
-Native Android prototype built with Kotlin and Jetpack Compose. It currently connects to the FastAPI development backend for video upload, media inspection, frame preview and manual court calibration.
+Native Android prototype built with Kotlin and Jetpack Compose. It connects to the FastAPI development backend for video upload, media inspection, court calibration, candidate analysis, event review and SVG reporting.
 
 ## Requirements
 
-- Android Studio with a compatible Android Gradle Plugin 9.5.x environment.
+- Android Studio with Android Gradle Plugin 9.5.0 support.
 - JDK 17.
 - Android SDK Platform 36 and Build Tools 36.0.0.
 - Gradle 9.6.0.
 - An accessible backend with FFmpeg and ffprobe installed.
 
-The project pins Android Gradle Plugin 9.5.0, Kotlin 2.4.21, Compose BOM 2026.09.00, Gradle 9.6.0 and Java 17. These versions were selected against the official Android / Kotlin release documentation.
+The project uses AGP 9.5.0 with its built-in Kotlin support, Kotlin Compose compiler plugin 2.4.10, Compose BOM 2026.06.01, Gradle 9.6.0 and Java 17.
 
 ## Open and build
 
@@ -18,13 +18,19 @@ Open the `android/` directory in Android Studio and sync Gradle. The debug APK i
 
 `app/build/outputs/apk/debug/app-debug.apk`
 
-A Gradle wrapper properties file is included; if the wrapper scripts are absent in your checkout, generate them once from this directory using:
+The release variant is produced at:
+
+`app/build/outputs/apk/release/app-release.apk`
+
+or `app-release-unsigned.apk` if a release keystore is not configured. See the signing section below.
+
+A Gradle wrapper properties file is included; if the wrapper scripts are absent in your checkout, generate them once from this directory:
 
 ```bash
 gradle wrapper --gradle-version 9.6.0
 ```
 
-The Android CI workflow installs Gradle 9.6.0 and runs `gradle :app:assembleDebug` on Android-related changes.
+GitHub Actions builds the debug APK and the release APK. The release workflow uploads either a signed or explicitly unsigned artifact.
 
 ## Connect to the backend
 
@@ -37,22 +43,26 @@ python -m pip install -e ".[dev]"
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Install FFmpeg so both `ffmpeg` and `ffprobe` are available on the backend PATH. Do not expose this unauthenticated development server to the public internet.
-
-The app's development manifest currently permits cleartext HTTP for local testing. Before any production release, switch the API to HTTPS, disable cleartext traffic, add authentication and implement secure upload / playback.
+Install FFmpeg so both `ffmpeg` and `ffprobe` are available on the backend PATH. Do not expose this unauthenticated development server to the public internet. Cleartext HTTP is enabled only in the debug manifest; release builds default to HTTPS-only.
 
 ## Current app flow
 
-1. Choose a local video through Android's document picker.
-2. Upload it to the backend.
-3. Inspect its metadata through ffprobe.
-4. Extract a JPEG frame at a timestamp.
-5. Tap the four court corners in the displayed order: far-left, far-right, near-right, near-left.
-6. Save the manual court calibration.
-7. Tap a player's feet / ground-contact point, choose near or far court end, and request its signed baseline distance.
+1. Choose a local video through Android's document picker and upload it.
+2. Inspect duration, resolution, frame rate and codec through ffprobe.
+3. Extract a JPEG frame at a chosen timestamp.
+4. Request a heuristic green-region court-corner suggestion or tap the four corners manually in the order far-left, far-right, near-right, near-left. The app overlays the selected points so they can be checked before saving.
+5. Save a manual court calibration and project a selected player's feet / ground-contact point into baseline distance in metres.
+6. Start sampled analysis and refresh its progress.
+7. Inspect near-end / far-end position summaries and density heatmaps.
+8. Preview trajectory-change candidates at their source timestamps, then accept, reject or relabel them.
+9. Add a manually confirmed event with an explicit timestamp and event type when the automatic detector misses it.
+10. Export the court-positioning and reliability report as SVG.
 
-This prototype uses manual taps. It does not yet detect court lines or players automatically, and it is not a finished production app.
+## Reliability limits
 
+The current pipeline uses a green-region court heuristic, OpenCV's generic HOG pedestrian detector, a bounding-box-bottom ground-point approximation and a colour / compact-blob ball-candidate filter. These are not tennis-trained validated models or a robust multi-object player/ball tracker. They can miss the ball or players, detect spectators, and fail on camera cuts, zooms and occlusions. Automatic detections remain unverified candidates; the user must confirm court calibration and event labels before using event-derived statistics.
+
+Position averages and heatmaps are prototype indicators based on generic person proposals. The current worker runs in-process and stores jobs / media locally. It is not a multi-user production service and does not provide authentication, cloud media storage, durable queue processing or integrated video playback.
 
 ## Release signing (Android)
 
@@ -63,6 +73,6 @@ The release workflow builds version `0.2.0`. A signed release is produced only w
 - `ANDROID_KEY_ALIAS` — signing-key alias.
 - `ANDROID_KEY_PASSWORD` — signing-key password.
 
-Store the keystore securely offline and back it up. Do not commit it to the public repository. The same signing key must be retained for future app updates. Without all four secrets the workflow produces an explicitly labelled **unsigned** release APK artifact; it will not publish that file as a production GitHub Release.
+Store the keystore securely offline and back it up. Do not commit it to the public repository. The same signing key must be retained for future app updates. Without all four secrets the workflow produces an explicitly labelled **unsigned** release APK artifact; that file is not installable as a normal production app until signed with your release key.
 
-Run the workflow from GitHub Actions → Android Release APK → Run workflow. When signing is configured, the workflow uploads the signed APK and publishes the `v0.2.0` GitHub Release. When signing is absent, it only uploads the unsigned APK for inspection; that artifact is not installable as a normal production update until signed with your release key.
+Run the workflow from GitHub Actions → Android Release APK → Run workflow. When signing is configured, the workflow uploads the signed APK and publishes the `v0.2.0` GitHub Release. When signing is absent, it uploads only the unsigned release artifact for inspection.
