@@ -95,8 +95,6 @@ def _load_video_metadata(video_id: str) -> tuple[Path, Path, dict[str, object]]:
     return video_path, metadata_path, metadata
 
 
-
-
 def _resumable_storage() -> ResumableVideoStorage:
     settings = get_settings()
     return ResumableVideoStorage(
