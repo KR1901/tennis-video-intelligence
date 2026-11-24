@@ -17,6 +17,7 @@ from app.schemas.analysis import (
 )
 from app.services.frame_extract import extract_video_frame
 from app.services.report_export import render_analysis_svg
+from app.services.report_raster import render_analysis_pdf, render_analysis_png
 from app.services.vision_analysis import (
     calculate_reviewed_match_metrics,
     detect_court_candidate,
@@ -263,6 +264,10 @@ async def review_analysis_event(
     event["player_id"] = request.player_id
     if request.note is not None:
         event["review_note"] = request.note
+    for field in ("serve_number", "serve_result", "shot_depth", "shot_direction", "point_id", "rally_contact_index"):
+        value = getattr(request, field)
+        if value is not None:
+            event[field] = value
 
     _write_job(path, job)
     return {
@@ -327,6 +332,12 @@ async def create_manual_analysis_event(
         "review_source": "human_manual_entry",
         "reviewed_at": datetime.now(UTC).isoformat(),
         "review_note": request.note,
+        "serve_number": request.serve_number,
+        "serve_result": request.serve_result,
+        "shot_depth": request.shot_depth,
+        "shot_direction": request.shot_direction,
+        "point_id": request.point_id,
+        "rally_contact_index": request.rally_contact_index,
         "note": "Manually entered and explicitly confirmed by the user.",
     }
     events.append(event)
@@ -337,3 +348,46 @@ async def create_manual_analysis_event(
         "event": event,
         "reviewed_metrics": calculate_reviewed_match_metrics(job),
     }
+
+
+@router.get(
+    "/analyses/{analysis_id}/report.png",
+    summary="Export positioning and reviewed-event statistics as PNG",
+)
+async def export_analysis_report_png(analysis_id: str) -> Response:
+    job = _read_job(_job_path(analysis_id))
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="Analysis has not completed.")
+    image = render_analysis_png(job)
+    return Response(
+        content=image,
+        media_type="image/png",
+        headers={"Content-Disposition": f'attachment; filename="match-{analysis_id}.png"'},
+    )
+
+
+@router.get(
+    "/analyses/{analysis_id}/report.pdf",
+    summary="Export positioning and reviewed-event statistics as PDF",
+)
+async def export_analysis_report_pdf(analysis_id: str) -> Response:
+    job = _read_job(_job_path(analysis_id))
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="Analysis has not completed.")
+    document = render_analysis_pdf(job)
+    return Response(
+        content=document,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="match-{analysis_id}.pdf"'},
+    )
+
+
+@router.delete(
+    "/analyses/{analysis_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a persisted analysis result",
+)
+async def delete_analysis(analysis_id: str) -> Response:
+    path = _job_path(analysis_id)
+    path.unlink(missing_ok=True)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
