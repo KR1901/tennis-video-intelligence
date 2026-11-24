@@ -283,7 +283,9 @@ def _make_player_summary(
         "p90_baseline_distance_m": float(np.percentile(distances, 90)),
         "behind_baseline_pct": 100.0 * sum(value > 0.05 for value in distances) / len(distances),
         "inside_baseline_pct": 100.0 * sum(value < -0.05 for value in distances) / len(distances),
-        "on_or_near_baseline_pct": 100.0 * sum(abs(value) <= 0.05 for value in distances) / len(distances),
+        "on_or_near_baseline_pct": (
+            100.0 * sum(abs(value) <= 0.05 for value in distances) / len(distances)
+        ),
         "coverage_pct": 100.0 * len(distances) / max(1, eligible_scans),
         "unit": "metres",
     }
@@ -461,7 +463,9 @@ def run_analysis_job(
                         else:
                             court_point = project_point((foot[0], foot[1]), matrix)
                         player_end = "near" if court_point[1] >= 0 else "far"
-                        baseline_distance = signed_baseline_distance_m(court_point, player_end, court)
+                        baseline_distance = signed_baseline_distance_m(
+                            court_point, player_end, court
+                        )
 
                     valid_detections.append(
                         {
