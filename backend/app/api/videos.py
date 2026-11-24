@@ -2,23 +2,42 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import numpy as np
 from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
 
 from app.core.config import get_settings
+from app.schemas.calibration import (
+    CourtCalibrationRequest,
+    CourtCalibrationResponse,
+    CourtProjectionRequest,
+    CourtProjectionResponse,
+)
 from app.schemas.video import (
     MediaInspectionResponse,
     VideoStatusResponse,
     VideoUploadResponse,
 )
-from app.services.court_geometry import (\n    CourtDimensions,\n    estimate_homography,\n    project_point,\n    signed_baseline_distance_m,\n)\nfrom app.services.frame_extract import (\n    FFmpegUnavailableError,\n    FrameExtractionError,\n    FrameExtractionTimeoutError,\n    extract_video_frame,\n)\nfrom app.services.media_probe import (
+from app.services.court_geometry import (
+    CourtDimensions,
+    estimate_homography,
+    project_point,
+    signed_baseline_distance_m,
+)
+from app.services.frame_extract import (
+    FFmpegUnavailableError,
+    FrameExtractionError,
+    FrameExtractionTimeoutError,
+    extract_video_frame,
+)
+from app.services.media_probe import (
     FFprobeUnavailableError,
     InvalidMediaError,
     MediaProbeTimeoutError,
     probe_video_file,
 )
-import numpy as np\n\nfrom app.services.video_storage import (
+from app.services.video_storage import (
     LocalVideoStorage,
     VideoTooLargeError,
     VideoValidationError,
