@@ -42,7 +42,10 @@ docs/          Architecture, metric definitions, reliability and delivery roadma
 .github/       CI workflow and issue templates
 ```
 
-## Run the backend locally
+## Legacy backend prototype (not required by the Android app)
+
+The following instructions apply only to the older FastAPI research service. The Android app does not connect to it.
+
 
 Requirements: Python 3.11 or newer.
 
@@ -63,7 +66,7 @@ uvicorn app.main:app --reload
 
 Open `http://127.0.0.1:8000/docs` for the API documentation and `http://127.0.0.1:8000/health` for the health check.
 
-### Container deployment
+### Legacy container deployment
 
 A backend image definition is provided at `backend/Dockerfile`. Build and run it with a persistent volume and a strong token:
 
@@ -80,7 +83,7 @@ docker run --name tvi-api --restart unless-stopped \
 
 Put a TLS-terminating reverse proxy or managed HTTPS ingress in front of the container and point the Android release app at that HTTPS hostname. The volume must have at least 10 GiB plus operational headroom. This container runs one API worker for the local resumable-upload store; it is a single-instance deployment starter, not a horizontally scalable production platform.
 
-### Upload a test video
+### Legacy API upload example
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/api/v1/videos" \\
@@ -98,7 +101,7 @@ See [the Android setup and usage guide](android/README.md). The app includes res
 
 The Android release workflow produces a signed APK only when all four repository Actions secrets are configured: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Without them it deliberately publishes only an unsigned release artifact, not a production GitHub Release. See [Android release setup](android/README.md#release-signing-android).
 
-## Configuration
+## Legacy backend configuration
 
 Environment variables use the `TVI_` prefix:
 
@@ -124,7 +127,7 @@ Do not expose the development server directly to the public internet. Production
 
 ## Development status
 
-See [the roadmap](docs/roadmap.md), [architecture](docs/architecture.md) and [metric definitions](docs/metrics-and-reliability.md). The initial API tests run with:
+See [the roadmap](docs/roadmap.md) and [architecture](docs/architecture.md). The legacy API tests run with:
 
 ```bash
 cd backend
