@@ -14,11 +14,9 @@ from app.schemas.analysis import (
     CourtDetectionResponse,
     EventReviewRequest,
 )
-from app.services.court_geometry import CourtDimensions, estimate_homography
 from app.services.frame_extract import extract_video_frame
 from app.services.report_export import render_analysis_svg
 from app.services.vision_analysis import (
-    VideoAnalysisError,
     calculate_reviewed_match_metrics,
     detect_court_candidate,
     run_analysis_job,
