@@ -13,6 +13,7 @@ from app.schemas.analysis import (
     AnalysisRequest,
     CourtDetectionResponse,
     EventReviewRequest,
+    ManualEventCreateRequest,
 )
 from app.services.frame_extract import extract_video_frame
 from app.services.report_export import render_analysis_svg
@@ -285,3 +286,54 @@ async def export_analysis_report(analysis_id: str) -> Response:
         media_type="image/svg+xml",
         headers={"Content-Disposition": f'attachment; filename="match-{analysis_id}.svg"'},
     )
+
+
+@router.post(
+    "/analyses/{analysis_id}/events",
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a manually verified match event",
+)
+async def create_manual_analysis_event(
+    analysis_id: str,
+    request: ManualEventCreateRequest,
+) -> dict[str, object]:
+    path = _job_path(analysis_id)
+    job = _read_job(path)
+    if job.get("status") != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail="Analysis must finish before adding reviewed events.",
+        )
+
+    summary = job.get("summary", {})
+    source = summary.get("source", {}) if isinstance(summary, dict) else {}
+    duration = source.get("duration_seconds") if isinstance(source, dict) else None
+    if duration is not None and request.timestamp_seconds > float(duration):
+        raise HTTPException(status_code=422, detail="Event timestamp exceeds video duration.")
+
+    events = job.get("events", [])
+    if not isinstance(events, list):
+        raise HTTPException(status_code=500, detail="Analysis event list is malformed.")
+
+    event = {
+        "event_id": f"manual-{uuid4()}",
+        "event_type": request.event_type,
+        "timestamp_seconds": request.timestamp_seconds,
+        "court_x_m": request.court_x_m,
+        "court_y_m": request.court_y_m,
+        "player_id": request.player_id,
+        "confidence": 1.0,
+        "review_status": "accepted",
+        "review_source": "human_manual_entry",
+        "reviewed_at": datetime.now(UTC).isoformat(),
+        "review_note": request.note,
+        "note": "Manually entered and explicitly confirmed by the user.",
+    }
+    events.append(event)
+    job["events"] = events
+    _write_job(path, job)
+    return {
+        "analysis_id": analysis_id,
+        "event": event,
+        "reviewed_metrics": calculate_reviewed_match_metrics(job),
+    }
