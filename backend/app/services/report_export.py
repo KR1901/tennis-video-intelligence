@@ -48,7 +48,9 @@ def render_analysis_svg(job: dict[str, Any]) -> str:
                     continue
                 x = court_left + column_index * court_width / max(1, len(row))
                 y = court_top + row_index * court_height / max(1, len(grid))
-                alpha = min(0.72, 0.08 + value / max(1, sum(sum(int(v) for v in r) for r in grid)) * 2.5)
+                alpha = min(
+                    0.72, 0.08 + value / max(1, sum(sum(int(v) for v in r) for r in grid)) * 2.5
+                )
                 cells.append(
                     f'<rect x="{x:.1f}" y="{y:.1f}" width="{court_width / max(1, len(row)):.1f}" '
                     f'height="{court_height / max(1, len(grid)):.1f}" fill="#0E8A63" '
@@ -89,6 +91,6 @@ def render_analysis_svg(job: dict[str, Any]) -> str:
         '<text x="56" y="920" font-family="Arial" font-size="17" font-weight="700" fill="#142b24">Reliability and coverage</text>',
         f'<text x="56" y="954" font-family="Arial" font-size="13" fill="#5d7068">{html.escape(disclaimer)}</text>',
         '<text x="56" y="1010" font-family="Arial" font-size="11" fill="#5d7068">Court outline and player heatmaps depend on camera angle, court detection and calibration.</text>',
-        '</svg>',
+        "</svg>",
     ]
     return "\n".join(lines)
