@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.kr1901.tennisvideo"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.kr1901.tennisvideo"
