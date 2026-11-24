@@ -1,7 +1,14 @@
 package com.kr1901.tennisvideo
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.net.Uri
+import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import java.io.File
 import java.io.FileOutputStream
@@ -21,7 +28,11 @@ class DirectVideoDownloadWorker(
     workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
 
+    override suspend fun getForegroundInfo(): ForegroundInfo =
+        createForegroundInfo(0L, -1L)
+
     override suspend fun doWork(): Result {
+        setForeground(createForegroundInfo(0L, -1L))
         val suppliedUrl = inputData.getString(KEY_URL)?.trim().orEmpty()
         if (suppliedUrl.isBlank()) return Result.failure()
 
@@ -116,6 +127,7 @@ class DirectVideoDownloadWorker(
                 }
 
                 var bytesWritten = offset
+                var lastNotificationBytes = offset
                 val buffer = ByteArray(BUFFER_SIZE)
                 activeConnection.inputStream.use { input ->
                     FileOutputStream(partialFile, append).buffered(BUFFER_SIZE).use { output ->
@@ -130,17 +142,22 @@ class DirectVideoDownloadWorker(
                                 throw IllegalArgumentException("The direct video exceeds the 4,768 MiB local limit.")
                             }
                             output.write(buffer, 0, count)
+                            val percent = if (totalLength > 0L) {
+                                min(99L, bytesWritten * 100L / totalLength).toInt()
+                            } else {
+                                -1
+                            }
                             setProgress(
                                 androidx.work.workDataOf(
                                     KEY_BYTES_DONE to bytesWritten,
                                     KEY_TOTAL_BYTES to totalLength,
-                                    KEY_PERCENT to if (totalLength > 0L) {
-                                        min(99L, bytesWritten * 100L / totalLength).toInt()
-                                    } else {
-                                        0
-                                    }
+                                    KEY_PERCENT to percent
                                 )
                             )
+                            if (bytesWritten - lastNotificationBytes >= NOTIFICATION_UPDATE_BYTES) {
+                                setForeground(createForegroundInfo(bytesWritten, totalLength))
+                                lastNotificationBytes = bytesWritten
+                            }
                         }
                     }
                 }
@@ -172,6 +189,62 @@ class DirectVideoDownloadWorker(
             return if (runAttemptCount < MAX_RETRIES) Result.retry()
             else Result.failure(
                 androidx.work.workDataOf(KEY_ERROR to (error.message ?: "Download failed"))
+            )
+        }
+    }
+
+    private suspend fun createForegroundInfo(
+        bytesDone: Long,
+        totalBytes: Long
+    ): ForegroundInfo {
+        ensureNotificationChannel()
+        val percent = if (totalBytes > 0L) {
+            min(99L, bytesDone * 100L / totalBytes).toInt()
+        } else {
+            0
+        }
+        val detail = if (totalBytes > 0L) {
+            "Downloaded " + android.text.format.Formatter.formatShortFileSize(applicationContext, bytesDone) +
+                " of " + android.text.format.Formatter.formatShortFileSize(applicationContext, totalBytes)
+        } else if (bytesDone > 0L) {
+            "Downloaded " + android.text.format.Formatter.formatShortFileSize(applicationContext, bytesDone)
+        } else {
+            "Starting secure video download…"
+        }
+        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("Downloading tennis video")
+            .setContentText(detail)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setProgress(100, percent, totalBytes <= 0L)
+            .build()
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun ensureNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "Video downloads",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Progress for user-requested tennis video downloads"
+                    setShowBadge(false)
+                }
             )
         }
     }
@@ -212,6 +285,9 @@ class DirectVideoDownloadWorker(
         const val KEY_BYTES_DONE = "bytes_done"
         const val KEY_TOTAL_BYTES = "bytes_total"
         const val KEY_PERCENT = "percent"
+        private const val CHANNEL_ID = "tvi-video-downloads"
+        private const val NOTIFICATION_ID = 0x545649
+        private const val NOTIFICATION_UPDATE_BYTES = 1024L * 1024L
         private const val MAX_VIDEO_BYTES = 4_768L * 1024L * 1024L
         private const val BUFFER_SIZE = 256 * 1024
         private const val CONNECT_TIMEOUT_MS = 20_000
