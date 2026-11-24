@@ -20,6 +20,8 @@ data/
 *.pt
 *.pth
 *.safetensors
+*.task
+/android/app/src/main/assets/models/
 
 # IDE / OS
 .idea/
