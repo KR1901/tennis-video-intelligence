@@ -193,8 +193,25 @@ class LocalAnalysisWorker(
                 (0 until samples.length()).mapNotNull { samples.optJSONObject(it) }
             }
             ?: emptyList()
-        val eventCandidates = TennisEventCandidateAnalyzer.deriveRecentCandidates(recentSamples)
-        LocalProjectStore.appendEventCandidates(applicationContext, projectId, eventCandidates)
+        val trajectory = recentSamples.mapNotNull(::toBallTrajectoryObservation)
+        val eventCandidates = TennisEventCandidateAnalyzer.deriveRecentCandidates(trajectory)
+        LocalProjectStore.appendEventCandidates(
+            applicationContext,
+            projectId,
+            eventCandidates.map { candidate ->
+                JSONObject()
+                    .put("event_id", candidate.eventId)
+                    .put("timestamp_ms", candidate.timestampMs)
+                    .put("event_type", candidate.eventType)
+                    .put("source", candidate.source)
+                    .put("confidence", candidate.confidence)
+                    .put("review_status", candidate.reviewStatus)
+                    .put("note", candidate.note)
+                    .put("turn_angle_degrees", candidate.turnAngleDegrees)
+                    .put("ball_x", candidate.ballX)
+                    .put("ball_y", candidate.ballY)
+            }
+        )
 
         val completed = nextStartMs >= durationMs
         val progress = if (completed) 100 else ((nextStartMs * 100L) / durationMs).toInt()
@@ -232,6 +249,38 @@ class LocalAnalysisWorker(
             )
         }
         Result.success()
+    }
+
+    private fun toBallTrajectoryObservation(sample: JSONObject): BallTrajectoryObservation? {
+        val ball = sample.optJSONObject("ball") ?: return null
+        if (!ball.optBoolean("detected", false)) return null
+        val x = ball.optDouble("x", Double.NaN)
+        val y = ball.optDouble("y", Double.NaN)
+        val confidence = ball.optDouble("confidence", 0.0)
+        if (!x.isFinite() || !y.isFinite()) return null
+
+        val wrists = ArrayList<Pair<Double, Double>>()
+        val players = sample.optJSONArray("players") ?: JSONArray()
+        for (index in 0 until players.length()) {
+            val player = players.optJSONObject(index) ?: continue
+            for (key in listOf("left_wrist", "right_wrist")) {
+                val wrist = player.optJSONObject(key) ?: continue
+                if (wrist.optBoolean("visible", false)) {
+                    val wristX = wrist.optDouble("x", Double.NaN)
+                    val wristY = wrist.optDouble("y", Double.NaN)
+                    if (wristX.isFinite() && wristY.isFinite()) {
+                        wrists.add(wristX to wristY)
+                    }
+                }
+            }
+        }
+        return BallTrajectoryObservation(
+            timestampMs = sample.optLong("timestamp_ms"),
+            x = x,
+            y = y,
+            confidence = confidence,
+            visibleWristPoints = wrists
+        )
     }
 
     private fun decodeFrame(
