@@ -234,7 +234,7 @@ internal object TennisMatchAnalyticsCalculator {
             type == "unforced_error"
 
     private fun serveZone(x: Double, y: Double): String {
-        val inServiceBox = abs(y) in SERVICE_LINE_DISTANCE_FROM_NET_M..HALF_COURT_LENGTH_M &&
+        val inServiceBox = abs(y) in 0.0..SERVICE_LINE_DISTANCE_FROM_NET_M &&
             abs(x) <= HALF_SERVICE_WIDTH_M
         if (!inServiceBox) return "Outside service box"
         return when {
