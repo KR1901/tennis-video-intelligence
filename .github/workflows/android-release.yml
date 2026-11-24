@@ -88,7 +88,7 @@ jobs:
           retention-days: 30
 
       - name: Publish GitHub Release
-        if: steps.signing.outputs.configured == 'true' && github.event_name == 'workflow_dispatch'
+        if: steps.signing.outputs.configured == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Release v0.3.0:')))
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: v0.3.0
