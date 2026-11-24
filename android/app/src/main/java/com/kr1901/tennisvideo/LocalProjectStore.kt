@@ -61,6 +61,29 @@ internal object LocalProjectStore {
     }
 
     @Synchronized
+    fun delete(context: Context, id: String): Boolean {
+        val project = load(context, id) ?: return false
+        val sourceUri = runCatching { Uri.parse(project.optString("content_uri")) }.getOrNull()
+        if (sourceUri?.scheme.equals("file", ignoreCase = true)) {
+            val sourceFile = sourceUri?.path?.let(::File)
+            val privateDownloads = File(context.filesDir, "remote_videos").canonicalFile
+            if (sourceFile != null) {
+                val canonical = sourceFile.canonicalFile
+                if (canonical.path.startsWith(privateDownloads.path + File.separator)) {
+                    canonical.delete()
+                }
+            }
+        }
+        val removedProject = projectFile(context, id).delete()
+        sampleLogFile(context, id).delete()
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (preferences.getString(LAST_PROJECT_ID, null) == id) {
+            preferences.edit().remove(LAST_PROJECT_ID).apply()
+        }
+        return removedProject
+    }
+
+    @Synchronized
     fun load(context: Context, id: String): JSONObject? {
         val file = projectFile(context, id)
         if (!file.isFile) return null
