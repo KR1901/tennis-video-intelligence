@@ -485,8 +485,12 @@ internal object LocalProjectStore {
         maxSamples: Int = 1_800
     ): JSONObject? {
         val project = load(context, id) ?: return null
+        val reportProject = JSONObject(project.toString())
+        calculateAnalytics(context, id)?.let { analytics ->
+            reportProject.put("match_analytics", analyticsToJson(analytics))
+        }
         val log = sampleLogFile(context, id)
-        if (!log.isFile || maxSamples <= 0) return project
+        if (!log.isFile || maxSamples <= 0) return reportProject
 
         val expectedCount = project.optInt("sample_count", 0).coerceAtLeast(0)
         if (expectedCount <= maxSamples) {
@@ -494,7 +498,7 @@ internal object LocalProjectStore {
             log.forEachLine { line ->
                 runCatching { JSONObject(line) }.getOrNull()?.let(complete::put)
             }
-            return JSONObject(project.toString()).put("samples", complete)
+            return reportProject.put("samples", complete)
         }
 
         val stride = kotlin.math.ceil(expectedCount.toDouble() / maxSamples.toDouble())
@@ -518,9 +522,41 @@ internal object LocalProjectStore {
                 selected.optJSONObject(selected.length() - 1)?.optLong("timestamp_ms") == lastTime
             if (!alreadyLast) selected.put(lastSample)
         }
-        return JSONObject(project.toString())
+        return reportProject
             .put("samples", selected)
             .put("report_sample_count", index)
+    }
+
+    private fun analyticsToJson(analytics: TennisMatchAnalytics): JSONObject {
+        fun countMap(counts: Map<String, Int>): JSONObject =
+            JSONObject().apply { counts.forEach { (key, value) -> put(key, value) } }
+
+        val players = JSONArray()
+        analytics.players.forEach { player ->
+            players.put(
+                JSONObject()
+                    .put("player_id", player.playerId)
+                    .put("observations", player.observations)
+                    .put("behind_baseline_pct", player.behindBaselinePercent)
+                    .put("mean_signed_baseline_m", player.averageSignedBaselineDistanceMeters)
+                    .put("sampled_movement_m", player.sampledMovementMeters)
+            )
+        }
+        return JSONObject()
+            .put("players", players)
+            .put("serve_zones", countMap(analytics.serveZones.counts))
+            .put("serve_zone_total", analytics.serveZones.total)
+            .put("shot_depths", countMap(analytics.shotDepths.counts))
+            .put("shot_depth_total", analytics.shotDepths.total)
+            .put("shot_directions", countMap(analytics.shotDirections.counts))
+            .put("shot_direction_total", analytics.shotDirections.total)
+            .put("rallies_completed", analytics.rallies.completedRallies)
+            .put("rally_avg_duration_s", analytics.rallies.averageDurationSeconds)
+            .put("rally_avg_reviewed_strokes", analytics.rallies.averageReviewedStrokes)
+            .put("accepted_events", analytics.acceptedEvents)
+            .put("accepted_located_events", analytics.acceptedLocatedEvents)
+            .put("pending_candidates", analytics.pendingCandidates)
+            .put("calibrated_player_observations", analytics.calibratedPlayerObservations)
     }
 
     @Synchronized
