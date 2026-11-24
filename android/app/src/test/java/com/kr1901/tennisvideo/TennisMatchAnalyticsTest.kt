@@ -9,7 +9,7 @@ import org.junit.Test
 class TennisMatchAnalyticsTest {
     @Test
     fun playerBaselineSummaryUsesCalibratedFootObservations() {
-        val analytics = TennisMatchAnalytics.calculate(
+        val analytics = TennisMatchAnalyticsCalculator.calculate(
             sequenceOf(
                 sample(0L, player("P1", 0.4, 12.5, 0.615), player("P2", -0.5, -12.5, 0.615)),
                 sample(400L, player("P1", 0.5, 11.5, -0.385), player("P2", -0.4, -11.5, -0.385))
@@ -32,7 +32,7 @@ class TennisMatchAnalyticsTest {
             .put(event(300L, "serve", "accepted", 3.5, 9.0))
             .put(event(400L, "serve", "needs_review", 0.5, 9.0))
 
-        val result = TennisMatchAnalytics.calculate(emptySequence(), events)
+        val result = TennisMatchAnalyticsCalculator.calculate(emptySequence(), events)
 
         assertEquals(3, result.serveZones.total)
         assertEquals(1, result.serveZones.counts["T"])
@@ -53,7 +53,7 @@ class TennisMatchAnalyticsTest {
             )
         )
 
-        val result = TennisMatchAnalytics.calculate(samples, events)
+        val result = TennisMatchAnalyticsCalculator.calculate(samples, events)
 
         assertEquals(1, result.returnPositions.size)
         val returner = result.returnPositions.single()
@@ -71,7 +71,7 @@ class TennisMatchAnalyticsTest {
             .put(event(300L, "volley", "accepted", 3.0, 10.0))
             .put(event(400L, "forehand", "rejected", 3.0, 10.0))
 
-        val result = TennisMatchAnalytics.calculate(emptySequence(), events)
+        val result = TennisMatchAnalyticsCalculator.calculate(emptySequence(), events)
 
         assertEquals(3, result.shotDepths.total)
         assertEquals(1, result.shotDepths.counts["Short"])
@@ -94,7 +94,7 @@ class TennisMatchAnalyticsTest {
             .put(event(5_000L, "point_start", "needs_review"))
             .put(event(6_000L, "point_end", "accepted"))
 
-        val result = TennisMatchAnalytics.calculate(emptySequence(), events)
+        val result = TennisMatchAnalyticsCalculator.calculate(emptySequence(), events)
 
         assertEquals(1, result.rallies.completedRallies)
         assertEquals(3.0, result.rallies.averageDurationSeconds, 0.001)
@@ -104,7 +104,7 @@ class TennisMatchAnalyticsTest {
 
     @Test
     fun observationsOutsideAllowedCourtEnvelopeAreIgnored() {
-        val result = TennisMatchAnalytics.calculate(
+        val result = TennisMatchAnalyticsCalculator.calculate(
             sequenceOf(sample(0L, player("P1", 0.0, 100.0, 88.115))),
             JSONArray()
         )
