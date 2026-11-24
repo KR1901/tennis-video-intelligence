@@ -120,10 +120,14 @@ def test_analysis_png_and_pdf_report_endpoints(tmp_path, monkeypatch) -> None:
         "summary": {
             "players": {
                 "near_player": {
-                    "average_baseline_distance_m": 1.0, "samples": 3, "coverage_pct": 50
+                    "average_baseline_distance_m": 1.0,
+                    "samples": 3,
+                    "coverage_pct": 50,
                 },
                 "far_player": {
-                    "average_baseline_distance_m": -1.0, "samples": 2, "coverage_pct": 30
+                    "average_baseline_distance_m": -1.0,
+                    "samples": 2,
+                    "coverage_pct": 30,
                 },
             },
             "position_heatmaps": {"near_player": [[0, 1]], "far_player": [[1, 0]]},
