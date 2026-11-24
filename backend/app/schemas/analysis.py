@@ -19,20 +19,23 @@ class CourtDetectionResponse(BaseModel):
 
 class EventReviewRequest(BaseModel):
     review_status: Literal["accepted", "rejected"]
-    event_type: Literal[
-        "serve_bounce",
-        "shot_bounce",
-        "racket_contact",
-        "point_start",
-        "point_end",
-        "net_contact",
-        "manual_note",
-        "serve_plus_one",
-        "return_plus_one",
-        "winner",
-        "forced_error",
-        "unforced_error",
-    ] | None = None
+    event_type: (
+        Literal[
+            "serve_bounce",
+            "shot_bounce",
+            "racket_contact",
+            "point_start",
+            "point_end",
+            "net_contact",
+            "manual_note",
+            "serve_plus_one",
+            "return_plus_one",
+            "winner",
+            "forced_error",
+            "unforced_error",
+        ]
+        | None
+    ) = None
     court_x_m: float | None = Field(default=None, ge=-20, le=20)
     court_y_m: float | None = Field(default=None, ge=-30, le=30)
     player_id: Literal["near_player", "far_player", "unknown"] = "unknown"
