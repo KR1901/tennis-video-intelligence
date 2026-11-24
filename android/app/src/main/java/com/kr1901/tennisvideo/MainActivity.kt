@@ -161,7 +161,7 @@ private fun TennisVideoApp() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var apiBaseUrl by remember { mutableStateOf("") }
+    var apiBaseUrl by remember { mutableStateOf(if (BuildConfig.DEBUG) "http://10.0.2.2:8000" else "") }
     var apiToken by remember { mutableStateOf("") }
     var showVideoPreview by remember { mutableStateOf(false) }
     var selectedUri by remember { mutableStateOf<android.net.Uri?>(null) }
@@ -249,6 +249,9 @@ private fun TennisVideoApp() {
                     )
                 }
                 selectedUri = uri
+                uploadProgress = 0f
+                uploadedBytes = 0L
+                uploadTotalBytes = 0L
                 analysisId = null
                 analysisSummary = null
                 eventCandidates.clear()
