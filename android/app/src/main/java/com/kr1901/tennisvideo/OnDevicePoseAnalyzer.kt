@@ -45,10 +45,14 @@ internal class OnDevicePoseAnalyzer(context: Context) : AutoCloseable {
 
     fun detect(bitmap: Bitmap, timestampMs: Long): List<PlayerPose> {
         val image = BitmapImageBuilder(bitmap).build()
-        val result = landmarker.detectForVideo(image, timestampMs)
-        return result.landmarks().mapNotNull { landmarks -> extractPlayerPose(landmarks) }
-            .sortedBy { it.footX }
-            .take(MAX_PLAYERS)
+        return try {
+            val result = landmarker.detectForVideo(image, timestampMs)
+            result.landmarks().mapNotNull { landmarks -> extractPlayerPose(landmarks) }
+                .sortedBy { it.footX }
+                .take(MAX_PLAYERS)
+        } finally {
+            image.close()
+        }
     }
 
     override fun close() {
