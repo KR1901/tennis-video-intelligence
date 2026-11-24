@@ -576,6 +576,56 @@ internal object LocalProjectStore {
     }
 
     @Synchronized
+    fun exportMetricsCsv(context: Context, id: String): String {
+        val analytics = calculateAnalytics(context, id) ?: error("Project was not found")
+        val csv = StringBuilder("category,metric,value,unit,observations,definition\n")
+        fun row(category: String, metric: String, value: String, unit: String, observations: Int, definition: String) {
+            csv.append(csvField(category)).append(',')
+                .append(csvField(metric)).append(',')
+                .append(csvField(value)).append(',')
+                .append(csvField(unit)).append(',')
+                .append(observations).append(',')
+                .append(csvField(definition)).append('\n')
+        }
+        analytics.players.forEach { player ->
+            row("Player position", player.playerId + " behind baseline", "%.1f".format(Locale.US, player.behindBaselinePercent), "%", player.observations,
+                "Percent of calibrated pose observations whose signed baseline distance is zero or positive.")
+            row("Player position", player.playerId + " mean signed baseline distance", "%.3f".format(Locale.US, player.averageSignedBaselineDistanceMeters), "m", player.observations,
+                "Positive means behind the baseline; negative means inside the court.")
+            row("Player movement", player.playerId + " sampled path length", "%.2f".format(Locale.US, player.sampledMovementMeters), "m", player.observations,
+                "Sum of consecutive sampled foot-point displacements, excluding long time gaps and implausibly large jumps.")
+        }
+        analytics.serveZones.counts.forEach { (zone, count) ->
+            row("Serve placement", zone, count.toString(), "accepted events", analytics.serveZones.total,
+                "Manually reviewed serve locations binned by their calibrated court x position; outside-box points are reported separately.")
+        }
+        analytics.shotDepths.counts.forEach { (depth, count) ->
+            row("Shot placement", depth, count.toString(), "accepted events", analytics.shotDepths.total,
+                "Manually reviewed shot/contact locations binned by distance from the net.")
+        }
+        analytics.shotDirections.counts.forEach { (direction, count) ->
+            row("Shot placement", direction, count.toString(), "accepted events", analytics.shotDirections.total,
+                "Left/centre/right is relative to the calibrated court x-axis, not the player's facing direction.")
+        }
+        row("Rally review", "Completed point start/end pairs", analytics.rallies.completedRallies.toString(), "rallies", analytics.rallies.completedRallies,
+            "Counts only accepted manual point_start and point_end markers.")
+        row("Rally review", "Average rally duration", "%.2f".format(Locale.US, analytics.rallies.averageDurationSeconds), "seconds", analytics.rallies.completedRallies,
+            "Mean time between accepted point_start and point_end markers.")
+        row("Rally review", "Average labelled strokes", "%.2f".format(Locale.US, analytics.rallies.averageReviewedStrokes), "strokes", analytics.rallies.ralliesWithStrokeLabels,
+            "Mean manually accepted serve/return/forehand/backhand/volley/shot/contact labels between point boundaries.")
+        row("Review coverage", "Accepted event labels", analytics.acceptedEvents.toString(), "events", analytics.acceptedEvents,
+            "Accepted manual or reviewed candidates; unreviewed candidates are excluded from placement counts.")
+        row("Review coverage", "Accepted located event labels", analytics.acceptedLocatedEvents.toString(), "events", analytics.acceptedEvents,
+            "Accepted event labels that have valid court x/y coordinates.")
+        row("Review coverage", "Awaiting review", analytics.pendingCandidates.toString(), "events", analytics.pendingCandidates,
+            "Model-generated candidates that have not been accepted or rejected.")
+        return csv.toString()
+    }
+
+    private fun csvField(value: String): String =
+        "\"" + value.replace("\"", "\"\"") + "\""
+
+    @Synchronized
     fun exportPositionsCsv(context: Context, id: String): String {
         val positions = load(context, id)?.optJSONArray("manual_positions") ?: error("Project was not found")
         val csv = StringBuilder(
