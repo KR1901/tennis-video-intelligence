@@ -1,37 +1,56 @@
 # Backend
 
-FastAPI service for video ingestion, media inspection, frame preview and manual court calibration. Automatic court detection, player / ball tracking and tennis-event recognition are not implemented yet.
+FastAPI API for local video ingestion, media inspection, manual / heuristic court calibration, analysis jobs, event review and SVG report export.
+
+## Requirements
+
+- Python 3.11+
+- FFmpeg and ffprobe on PATH (media inspection and frame extraction)
+- OpenCV headless, NumPy and the Python dependencies in `pyproject.toml`
 
 ## Current endpoints
 
 - `GET /health` — service health.
-- `POST /api/v1/videos` — validate and store one video locally; returns a generated video ID.
-- `GET /api/v1/videos/{video_id}` — return upload / inspection status and persisted metadata.
-- `POST /api/v1/videos/{video_id}/inspect` — run `ffprobe` and persist duration, frame rate, resolution, codec, rotation and other available stream metadata.
-- `GET /api/v1/videos/{video_id}/frame?timestamp_seconds=...` — return one JPEG frame extracted with `ffmpeg`, for preview and manual calibration.
-- `POST /api/v1/videos/{video_id}/calibrations` — create and persist a manual court calibration from four image points.
-- `POST /api/v1/videos/{video_id}/calibrations/{calibration_id}/project` — project a selected image point into court-plane metres and calculate its signed distance from the near or far baseline.
+- `POST /api/v1/videos` — upload a video to local development storage.
+- `GET /api/v1/videos/{video_id}` — read upload / inspection metadata.
+- `POST /api/v1/videos/{video_id}/inspect` — inspect streams with ffprobe.
+- `GET /api/v1/videos/{video_id}/frame?timestamp_seconds=...` — extract one JPEG frame.
+- `POST /api/v1/videos/{video_id}/calibrations` — save manual four-corner homography.
+- `POST /api/v1/videos/{video_id}/calibrations/{calibration_id}/project` — project an image point into court-plane metres.
+- `POST /api/v1/videos/{video_id}/court-detection` — suggest green-region court corners from a frame; the user must confirm orientation and keypoints.
+- `POST /api/v1/videos/{video_id}/analyses` — start a local background analysis job.
+- `GET /api/v1/analyses/{analysis_id}` — inspect job state, positioning candidates and reviewed metrics.
+- `GET /api/v1/analyses/{analysis_id}/events` — list unreviewed candidates and reviewed labels.
+- `POST /api/v1/analyses/{analysis_id}/events/{event_id}/review` — accept / reject / relabel a candidate.
+- `POST /api/v1/analyses/{analysis_id}/events` — add a manually confirmed event.
+- `GET /api/v1/analyses/{analysis_id}/report.svg` — export a court-positioning SVG report.
 
-## Manual calibration point order
+## How the analysis works today
 
-Select the four outer corners in this exact order:
+The initial worker samples the video, uses a generic OpenCV HOG pedestrian detector to propose people, approximates their ground points from bounding-box bottoms, and uses a manual calibration or a heuristic green-region court quadrilateral to project points into court coordinates. A simple HSV blob filter proposes possible tennis-ball locations and very low-confidence trajectory direction changes.
 
-1. Far-left doubles (or singles) court corner.
-2. Far-right court corner.
-3. Near-right court corner.
-4. Near-left court corner.
+These are development candidates, not a validated tennis vision model. They can fail on camera cuts, zooms, dark / light court surfaces, occlusions, audience members and similar-coloured objects. Automatic court suggestions require visual confirmation. Without a verified calibration, the position metrics remain unavailable.
 
-Use the same area consistently for the intended measurement. The API maps taps to the regulation court rectangle using a planar homography. It currently trusts the selected points; the response does not certify that the points are correct or that the camera view is stable.
+Serve placement, shot placement, rally contacts, serve +1 / return +1 and winners / errors are only counted from events a person explicitly confirms or enters. The system does not silently convert computer-vision proposals into official match events.
 
-For player positioning, send the image point corresponding to the player's feet / ground contact, not the centre of their torso bounding box. The near baseline is at y = +11.885 m and the far baseline at y = -11.885 m. A signed baseline distance is positive behind the baseline and negative inside the court.
+## Local run
 
-## Local requirements
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+uvicorn app.main:app --reload
+```
 
-Install FFmpeg so that both `ffprobe` and `ffmpeg` are available on `PATH`.
+Run tests and style checks:
 
-- `503` when the required executable is unavailable;
-- `504` when media inspection / frame extraction times out;
-- `422` when the media is invalid, a timestamp is out of range, or calibration points cannot define a stable transform;
-- `404` when the video or calibration ID does not exist.
+```bash
+pytest
+ruff check .
+ruff format --check .
+```
 
-Storage is currently local and intended for development. Authentication, database persistence, background jobs and private object storage remain future work.
+## Important deployment limitation
+
+Video files and analysis JSON currently live in a local directory. Analysis jobs use FastAPI in-process background tasks. There is no database, durable queue, authentication, multi-user isolation, cloud object store, retention scheduler or signed playback. Do not expose this development service to the public internet or use it to process confidential footage until those controls are deployed.
