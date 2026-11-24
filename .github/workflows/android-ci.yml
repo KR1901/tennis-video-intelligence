@@ -18,6 +18,7 @@ permissions:
 jobs:
   assemble-debug:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -45,3 +46,10 @@ jobs:
       - name: Assemble debug APK
         working-directory: android
         run: gradle --no-daemon :app:assembleDebug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: tennis-video-intelligence-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
