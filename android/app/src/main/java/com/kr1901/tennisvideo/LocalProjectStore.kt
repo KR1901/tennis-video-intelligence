@@ -5,6 +5,7 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Locale
 import java.util.UUID
 
 internal data class LocalVideoMetadata(
