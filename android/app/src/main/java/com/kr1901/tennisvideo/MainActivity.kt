@@ -133,6 +133,8 @@ private fun LocalTennisVideoApp() {
     var manualEventType by remember { mutableStateOf("serve") }
     var manualEventNote by remember { mutableStateOf("") }
     var matchAnalytics by remember { mutableStateOf<TennisMatchAnalytics?>(null) }
+    var frameIntervalMs by remember { mutableStateOf(200L) }
+    var courtRevision by remember { mutableStateOf(0) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var showVideoPlayback by remember { mutableStateOf(false) }
     val courtCorners = remember { mutableStateListOf<Pair<Float, Float>>() }
@@ -516,7 +518,7 @@ private fun LocalTennisVideoApp() {
         .minByOrNull { abs(it.optLong("timestamp_ms") - frameTimestampMs) }
         ?.takeIf { abs(it.optLong("timestamp_ms") - frameTimestampMs) <= 700L }
 
-    LaunchedEffect(projectId, sampleCount, eventRevision) {
+    LaunchedEffect(projectId, sampleCount, eventRevision, courtRevision) {
         val id = projectId
         if (id == null || sampleCount == 0 && eventCount == 0) {
             matchAnalytics = null
@@ -905,6 +907,10 @@ private fun LocalTennisVideoApp() {
                                                 withContext(Dispatchers.IO) {
                                                     LocalProjectStore.setCourtCorners(context, id, suggestion)
                                                 }
+                                                courtRevision++
+                                                project = withContext(Dispatchers.IO) {
+                                                    LocalProjectStore.load(context, id)
+                                                }
                                                 message = "Approximate green-region corners suggested. Check the overlay and correct them before trusting any metre measurement."
                                             }
                                         } catch (error: Exception) {
@@ -972,6 +978,7 @@ private fun LocalTennisVideoApp() {
                                             LocalProjectStore.setCourtCorners(context, id, emptyList())
                                             LocalProjectStore.load(context, id)
                                         }.also { project = it }
+                                        courtRevision++
                                         markPlayerPosition = false
                                         message = "Court corners and measurements cleared."
                                     }
@@ -1086,9 +1093,38 @@ private fun LocalTennisVideoApp() {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("3 · Analyse on this phone", fontWeight = FontWeight.Bold, color = AppInk)
                         Text(
-                            "The app runs MediaPipe Pose Landmarker on video frames to propose up to two player poses and TrackNet V1 to propose tennis-ball locations on a 5 fps sampling grid. Player feet can be projected into court metres only after you calibrate the four corners. Candidate contacts or trajectory changes remain unconfirmed until you review them.",
+                            "MediaPipe Pose proposes up to two people and TrackNet V1 proposes ball locations. Choose the temporal sampling rate below. Player feet can be projected into court metres only after you calibrate the four corners; generated events remain review candidates.",
                             color = AppMuted,
                             fontSize = 12.sp
+                        )
+                        Text("Frame sampling rate", color = AppInk, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                            if (frameIntervalMs == 400L) {
+                                Button(onClick = { frameIntervalMs = 400L }, modifier = Modifier.weight(1f)) { Text("Quick\n2.5 fps") }
+                            } else {
+                                OutlinedButton(onClick = { frameIntervalMs = 400L }, modifier = Modifier.weight(1f)) { Text("Quick\n2.5 fps") }
+                            }
+                            if (frameIntervalMs == 200L) {
+                                Button(onClick = { frameIntervalMs = 200L }, modifier = Modifier.weight(1f)) { Text("Balanced\n5 fps") }
+                            } else {
+                                OutlinedButton(onClick = { frameIntervalMs = 200L }, modifier = Modifier.weight(1f)) { Text("Balanced\n5 fps") }
+                            }
+                            if (frameIntervalMs == 100L) {
+                                Button(onClick = { frameIntervalMs = 100L }, modifier = Modifier.weight(1f)) { Text("Detailed\n10 fps") }
+                            } else {
+                                OutlinedButton(onClick = { frameIntervalMs = 100L }, modifier = Modifier.weight(1f)) { Text("Detailed\n10 fps") }
+                            }
+                        }
+                        Text(
+                            if (frameIntervalMs == 100L) {
+                                "Detailed mode runs more ball-model inference and may use substantially more battery, memory bandwidth and processing time."
+                            } else if (frameIntervalMs == 400L) {
+                                "Quick mode reduces processing load but can miss fast ball movement and brief contacts."
+                            } else {
+                                "Balanced mode is the default compromise between temporal detail and phone workload."
+                            },
+                            color = AppMuted,
+                            fontSize = 11.sp
                         )
                         Button(
                             onClick = {
@@ -1103,7 +1139,8 @@ private fun LocalTennisVideoApp() {
                                             .setInputData(
                                                 workDataOf(
                                                     LocalAnalysisWorker.KEY_PROJECT_ID to id,
-                                                    LocalAnalysisWorker.KEY_START_MS to 0L
+                                                    LocalAnalysisWorker.KEY_START_MS to 0L,
+                                                    LocalAnalysisWorker.KEY_FRAME_INTERVAL_MS to frameIntervalMs
                                                 )
                                             )
                                             .addTag(LocalAnalysisWorker.tag(id))
@@ -1114,7 +1151,8 @@ private fun LocalTennisVideoApp() {
                                             request
                                         )
                                         project = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
-                                        message = "On-device analysis queued. Android can continue the saved work after you leave the app."
+                                        message = "On-device analysis queued at " +
+                            (1000L / frameIntervalMs).toString() + " fps. Android can continue saved work after you leave the app."
                                     } catch (error: Exception) {
                                         message = "Could not start local analysis: " + (error.message ?: "unknown error")
                                     } finally {
