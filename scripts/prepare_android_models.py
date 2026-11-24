@@ -146,8 +146,9 @@ def make_tracknet_onnx(weights_path: Path, output_path: Path) -> dict[str, objec
 
         def forward(self, frames):
             logits = self.network(frames).reshape(-1, 256, 360, 640)
-            # The mobile output is a compact class heatmap (0..255), not 59M logits.
-            return torch.argmax(logits, dim=1).to(dtype=torch.float32)
+            # TrackNet class 255 represents the tennis-ball mask. Export its calibrated
+            # per-pixel softmax probability rather than the argmax class identifier.
+            return torch.softmax(logits, dim=1)[:, 255, :, :]
 
     torch.set_num_threads(2)
     state = torch.load(weights_path, map_location="cpu", weights_only=True)
@@ -181,7 +182,7 @@ def make_tracknet_onnx(weights_path: Path, output_path: Path) -> dict[str, objec
         "source_license": "MIT",
         "input_shape": [1, 9, 360, 640],
         "output_shape": [1, 360, 640],
-        "output_encoding": "float32 class index from 0 to 255",
+        "output_encoding": "float32 softmax probability for TrackNet class 255 (tennis ball), 0..1",
         "size_bytes": output_path.stat().st_size,
         "sha256": sha256(output_path),
     }
