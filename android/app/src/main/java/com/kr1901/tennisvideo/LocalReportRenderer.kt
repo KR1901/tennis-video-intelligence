@@ -75,8 +75,9 @@ internal object LocalReportRenderer {
         svg.append("""<rect width="100%" height="100%" fill="#f4f7fb"/>""")
         svg.append("""<text x="70" y="82" font-size="38" font-family="sans-serif" font-weight="700" fill="#17222d">$title</text>""")
         svg.append("""<text x="70" y="124" font-size="18" font-family="sans-serif" fill="#5b6a77">Local analysis report · $builtAt</text>""")
+        svg.append("""<text x="70" y="153" font-size="16" font-family="sans-serif" fill="#17222d">${escapeXml(data.reviewSummary)}</text>""")
+        svg.append("""<text x="70" y="176" font-size="13" font-family="sans-serif" fill="#5b6a77">${escapeXml(data.playerSummary)}</text>""")
         svg.append(court)
-        svg.append("""<text x="70" y="160" font-size="19" font-family="sans-serif" fill="#17222d">Court map: calibrated model observations and user-reviewed events</text>""")
         svg.append("""<text x="70" y="1170" font-size="15" font-family="sans-serif" fill="#5b6a77">Model candidates are not official match statistics. Camera movement and occlusion may affect detection.</text>""")
         svg.append("</svg>")
         return svg.toString()
@@ -117,6 +118,12 @@ internal object LocalReportRenderer {
         paint.textSize = 22f
         paint.typeface = Typeface.DEFAULT
         canvas.drawText("Local analysis report · ${data.builtAt}", 68f, 135f, paint)
+        paint.color = android.graphics.Color.rgb(23, 34, 45)
+        paint.textSize = 18f
+        canvas.drawText(data.reviewSummary.take(105), 68f, 184f, paint)
+        paint.color = android.graphics.Color.rgb(90, 105, 118)
+        paint.textSize = 16f
+        canvas.drawText(data.playerSummary.take(125), 68f, 218f, paint)
 
         drawCourt(canvas, data, paint)
 
@@ -263,6 +270,21 @@ internal object LocalReportRenderer {
             }
         }
 
+        val matchMetrics = project.optJSONObject("match_analytics")
+        val serveTotal = matchMetrics?.optInt("serve_zone_total", 0) ?: 0
+        val shotTotal = matchMetrics?.optInt("shot_depth_total", 0) ?: 0
+        val acceptedEvents = matchMetrics?.optInt("accepted_events", 0) ?: reviewedEvents.size
+        val completedRallies = matchMetrics?.optInt("rallies_completed", 0) ?: 0
+        val reviewSummary = "Reviewed annotations: $acceptedEvents accepted · $serveTotal serve locations · $shotTotal shot locations · $completedRallies complete rallies"
+        val playerMetrics = matchMetrics?.optJSONArray("players") ?: JSONArray()
+        val playerSummary = (0 until playerMetrics.length()).mapNotNull { index ->
+            val player = playerMetrics.optJSONObject(index) ?: return@mapNotNull null
+            player.optString("player_id") + " behind baseline " +
+                String.format(Locale.US, "%.1f%%", player.optDouble("behind_baseline_pct")) +
+                " · mean signed distance " +
+                String.format(Locale.US, "%+.2f m", player.optDouble("mean_signed_baseline_m"))
+        }.joinToString("  |  ").ifBlank { "No calibrated player-position summary available." }
+
         return ReportData(
             title = project.optString("display_name", "Tennis Video Analysis"),
             builtAt = java.text.SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.US)
@@ -271,6 +293,8 @@ internal object LocalReportRenderer {
             playerObservationCount = playerObservationCount,
             ballDetectionCount = ballDetectionCount,
             pendingEventCount = pendingCount,
+            reviewSummary = reviewSummary,
+            playerSummary = playerSummary,
             playerTrails = trails,
             ballPoints = balls,
             reviewedEvents = reviewedEvents
@@ -291,6 +315,8 @@ internal object LocalReportRenderer {
         val playerObservationCount: Int,
         val ballDetectionCount: Int,
         val pendingEventCount: Int,
+        val reviewSummary: String,
+        val playerSummary: String,
         val playerTrails: Map<String, List<Pair<Double, Double>>>,
         val ballPoints: List<Pair<Double, Double>>,
         val reviewedEvents: List<ReportEvent>
