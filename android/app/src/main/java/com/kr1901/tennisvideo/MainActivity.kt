@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -523,7 +524,7 @@ private fun LocalTennisVideoApp() {
 }
 
 @Composable
-private fun MetricValue(label: String, value: String) {
+private fun RowScope.MetricValue(label: String, value: String) {
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(value, color = AppInk, fontWeight = FontWeight.Bold, fontSize = 15.sp)
         Text(label, color = AppMuted, fontSize = 10.sp)
