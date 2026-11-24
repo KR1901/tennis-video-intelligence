@@ -114,7 +114,6 @@ def probe_video_file(
         "video_codec": video_stream.get("codec_name"),
         "container_format": format_info.get("format_name"),
         "rotation_degrees": rotation or 0,
-        "bit_rate": _as_int(format_info.get("bit_rate"))
-        or _as_int(video_stream.get("bit_rate")),
+        "bit_rate": _as_int(format_info.get("bit_rate")) or _as_int(video_stream.get("bit_rate")),
         "file_size_bytes": path.stat().st_size,
     }
