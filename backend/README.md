@@ -54,3 +54,17 @@ ruff format --check .
 ## Important deployment limitation
 
 Video files and analysis JSON currently live in a local directory. Analysis jobs use FastAPI in-process background tasks. There is no database, durable queue, authentication, multi-user isolation, cloud object store, retention scheduler or signed playback. Do not expose this development service to the public internet or use it to process confidential footage until those controls are deployed.
+
+
+## Additional analysis and report endpoints
+
+- `GET /api/v1/videos/{video_id}/stream` — stream the original file with HTTP byte-range support for native playback and seeking.
+- `DELETE /api/v1/videos/{video_id}` — delete the source video, metadata and related local analysis JSON.
+- `GET /api/v1/analyses/{analysis_id}/report.png` and `/report.pdf` — export a raster positioning / reviewed-event report.
+- `DELETE /api/v1/analyses/{analysis_id}` — delete a saved analysis JSON file.
+
+The reviewed event metric engine reports first / second serve labels and outcomes, coarse serve zones, short / mid-court / deep shot placement, explicit shot-direction labels, paired point sequences and player-side event aggregates. These figures are counted only from human-accepted labels. The serve-zone and depth partitions are descriptive bins, not official line calls or trained classifiers.
+
+## Optional bearer token
+
+Set `TVI_API_TOKEN` to enable shared bearer-token protection. Set `TVI_ENVIRONMENT=production` to require a non-empty token at startup. Send `Authorization: Bearer <token>` on protected routes. This is a shared service token, not user accounts or multi-tenant access isolation. Deploy behind HTTPS.

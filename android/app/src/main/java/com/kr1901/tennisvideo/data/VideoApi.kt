@@ -17,7 +17,8 @@ import java.util.UUID
 
 class VideoApi(
     baseUrl: String,
-    private val contentResolver: ContentResolver
+    private val contentResolver: ContentResolver,
+    private val apiToken: String = ""
 ) {
     private val baseUrl = baseUrl.trim().trimEnd('/')
 
@@ -59,6 +60,25 @@ class VideoApi(
 
     fun getVideo(videoId: String): JSONObject =
         requestJson("/api/v1/videos/$videoId", "GET")
+
+    fun deleteVideo(videoId: String) {
+        val connection = openConnection("/api/v1/videos/$videoId", "DELETE")
+        try {
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                val body = connection.errorStream?.use { it.readBytes().toString(Charsets.UTF_8) }.orEmpty()
+                throw IOException("Server returned HTTP $code: $body")
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    fun videoStreamUrl(videoId: String): String =
+        "$baseUrl/api/v1/videos/$videoId/stream"
+
+    fun videoStreamHeaders(): Map<String, String> =
+        if (apiToken.isBlank()) emptyMap() else mapOf("Authorization" to "Bearer $apiToken")
 
     fun getFrame(videoId: String, timestampSeconds: Double): Bitmap {
         val timestamp = String.format(Locale.US, "%.3f", timestampSeconds)
@@ -128,19 +148,36 @@ class VideoApi(
         timestampSeconds: Double,
         eventType: String,
         playerId: String,
-        note: String
+        note: String,
+        serveNumber: Int? = null,
+        serveResult: String? = null,
+        shotDepth: String? = null,
+        shotDirection: String? = null
     ): JSONObject {
         val payload = JSONObject()
             .put("timestamp_seconds", timestampSeconds)
             .put("event_type", eventType)
             .put("player_id", playerId)
             .put("note", note)
+        serveNumber?.let { payload.put("serve_number", it) }
+        serveResult?.takeIf { it.isNotBlank() }?.let { payload.put("serve_result", it) }
+        shotDepth?.takeIf { it.isNotBlank() }?.let { payload.put("shot_depth", it) }
+        shotDirection?.takeIf { it.isNotBlank() }?.let { payload.put("shot_direction", it) }
         return postJson("/api/v1/analyses/$analysisId/events", payload)
     }
 
-    fun getAnalysisReportSvg(analysisId: String): ByteArray {
-        val connection = openConnection("/api/v1/analyses/$analysisId/report.svg", "GET")
-        connection.setRequestProperty("Accept", "image/svg+xml")
+    fun getAnalysisReportSvg(analysisId: String): ByteArray =
+        getReportBytes("/api/v1/analyses/$analysisId/report.svg", "image/svg+xml")
+
+    fun getAnalysisReportPng(analysisId: String): ByteArray =
+        getReportBytes("/api/v1/analyses/$analysisId/report.png", "image/png")
+
+    fun getAnalysisReportPdf(analysisId: String): ByteArray =
+        getReportBytes("/api/v1/analyses/$analysisId/report.pdf", "application/pdf")
+
+    private fun getReportBytes(path: String, accept: String): ByteArray {
+        val connection = openConnection(path, "GET")
+        connection.setRequestProperty("Accept", accept)
         try {
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
@@ -228,6 +265,9 @@ class VideoApi(
     private fun openConnection(path: String, method: String): HttpURLConnection {
         val connection = URL("$baseUrl$path").openConnection() as HttpURLConnection
         connection.requestMethod = method
+        if (apiToken.isNotBlank()) {
+            connection.setRequestProperty("Authorization", "Bearer $apiToken")
+        }
         connection.connectTimeout = 15_000
         connection.readTimeout = 120_000
         connection.useCaches = false

@@ -19,7 +19,8 @@ This roadmap distinguishes working prototype functions from production-ready cap
 - [x] Create analysis jobs, progress state and result files using local JSON storage and FastAPI background tasks.
 - [ ] Replace local JSON storage with PostgreSQL / SQLite-backed repositories and migrations.
 - [ ] Replace in-process background tasks with a durable queue, retry policy and worker heartbeats.
-- [ ] Add user authentication, authorisation, quotas and access-scoped media records.
+- [x] Add optional shared bearer-token protection and require it when the backend is set to production mode.
+- [ ] Add individual user authentication, authorisation, quotas and access-scoped media records.
 - [ ] Add private object storage, signed upload / playback links and retention/deletion controls.
 - [ ] Generate low-resolution proxy videos and representative frames.
 
@@ -46,7 +47,7 @@ This roadmap distinguishes working prototype functions from production-ready cap
 - [ ] Tennis-trained ball detector and short-gap trajectory tracker.
 - [ ] Motion-aware candidate generation for racket contact, bounce and net crossing.
 - [ ] Validated serve, return and point-boundary models.
-- [ ] Synchronized frame / video playback during event review.
+- [x] Stream original video with HTTP byte ranges and play / seek it in the Android client during manual review.
 - [ ] Automatic point construction with missing-video and review-coverage accounting.
 
 ## Milestone 4 — shot and tactical analytics
@@ -55,9 +56,11 @@ This roadmap distinguishes working prototype functions from production-ready cap
 - [x] Calculate rally contact counts when point-start, point-end and contact labels are reviewed.
 - [x] Calculate manually reviewed winners, forced errors, unforced errors, serve +1 and return +1 counts.
 - [x] Include event provenance and review state in persisted results.
-- [ ] Separate first-serve / second-serve placement and outcome reports.
-- [ ] Calibrated shot depth, direction and service-box zone buckets.
-- [ ] Validated rally sequence, point outcome and player-level aggregates.
+- [x] Human-entered first-serve / second-serve labels, serve outcomes and coarse T/body/wide location summaries (prototype).
+- [x] Human-entered shot direction and coarse coordinate-derived short / mid-court / deep placement summaries (prototype; no automatic landing classifier).
+- [x] Pair reviewed point-start / point-end markers into non-overlapping rally sequences and count reviewed contacts.
+- [x] Aggregate manually reviewed winners, errors, serve +1 and return +1 by near / far labels.
+- [ ] Validate point outcomes and player identity across changeovers.
 - [ ] Match / player comparison filters and confidence-aware ranking.
 - [ ] Benchmark every metric against human-labelled held-out matches.
 
@@ -67,10 +70,11 @@ This roadmap distinguishes working prototype functions from production-ready cap
 - [x] Frame preview, manual corner taps and visible calibration markers.
 - [x] Analysis start / refresh, player-position summaries and heatmaps.
 - [x] Candidate-event review, manual event entry and SVG report export.
-- [ ] Native video playback with timestamp seek and event-to-frame review.
+- [x] Native Android video playback with server-side byte-range seek support.
 - [ ] Interactive mini-court with track / ball timelines and player comparison.
-- [ ] PNG and PDF report export.
-- [ ] User-managed retention and deletion controls.
+- [x] Export one-page PNG and PDF positioning / reviewed-event reports in addition to SVG.
+- [x] Delete a video and associated local analysis files from the Android client.
+- [ ] Add configurable retention schedules and per-user deletion auditing.
 - [ ] Production API authentication and HTTPS-only backend deployment.
 
 ## Production-readiness blockers
@@ -80,7 +84,7 @@ This roadmap distinguishes working prototype functions from production-ready cap
 - Player proposals use OpenCV's generic HOG pedestrian detector. They are not tennis-trained, their identities are not reliably tracked, and the bottom of a bounding box is only an approximate ground point.
 - Ball proposals use colour / compact-blob filtering at sampled frames. They are not validated ball tracks and do not establish contacts or bounces.
 - Event-derived statistics are counted only after a user explicitly confirms an event type. Unreviewed candidates must not be treated as official statistics.
-- The current Android APK has an unsigned release build configuration. A production-signed APK requires a user-controlled signing keystore configured as GitHub Actions secrets.
+- The Android release workflow builds an unsigned APK unless the owner configures a stable keystore in GitHub Actions secrets. This repository has no hosted production backend; the release client must be configured with an HTTPS API URL and the bearer token if enabled.
 
 ## Out of scope until validated
 

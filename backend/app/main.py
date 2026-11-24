@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+import hmac
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.analyses import router as analyses_router
 from app.api.videos import router as videos_router
@@ -17,9 +20,25 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origin_list,
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+@app.middleware("http")
+async def optional_api_token(request: Request, call_next):
+    configured_token = get_settings().api_token.strip()
+    public_paths = {"/health", "/docs", "/openapi.json", "/redoc"}
+    if configured_token and request.url.path not in public_paths:
+        supplied = request.headers.get("authorization", "")
+        expected = f"Bearer {configured_token}"
+        if not hmac.compare_digest(supplied, expected):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "A valid bearer token is required."},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    return await call_next(request)
 
 
 @app.get("/health", tags=["system"])

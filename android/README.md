@@ -1,6 +1,6 @@
 # Android application
 
-Native Android prototype built with Kotlin and Jetpack Compose. It connects to the FastAPI development backend for video upload, media inspection, court calibration, candidate analysis, event review and SVG reporting.
+Native Android prototype built with Kotlin and Jetpack Compose. It connects to the FastAPI backend for video upload, media inspection, court calibration, candidate analysis, human event review, native video playback, deletion and SVG / PNG / PDF reporting.
 
 ## Requirements
 
@@ -48,7 +48,7 @@ Install FFmpeg so both `ffmpeg` and `ffprobe` are available on the backend PATH.
 ## Current app flow
 
 1. Choose a local video through Android's document picker and upload it.
-2. Inspect duration, resolution, frame rate and codec through ffprobe.
+2. Inspect duration, resolution, frame rate and codec through ffprobe; optionally enter the shared API bearer token when the backend is configured to require it.
 3. Extract a JPEG frame at a chosen timestamp.
 4. Request a heuristic green-region court-corner suggestion or tap the four corners manually in the order far-left, far-right, near-right, near-left. The app overlays the selected points so they can be checked before saving.
 5. Save a manual court calibration and project a selected player's feet / ground-contact point into baseline distance in metres.
@@ -56,7 +56,8 @@ Install FFmpeg so both `ffmpeg` and `ffprobe` are available on the backend PATH.
 7. Inspect near-end / far-end position summaries and density heatmaps.
 8. Preview trajectory-change candidates at their source timestamps, then accept, reject or relabel them.
 9. Add a manually confirmed event with an explicit timestamp and event type when the automatic detector misses it.
-10. Export the court-positioning and reliability report as SVG.
+10. Export the court-positioning and reliability report as SVG, PNG or PDF.
+11. Play the source video from the backend with seek support, or delete the uploaded video and associated local analysis files.
 
 ## Reliability limits
 
@@ -66,7 +67,7 @@ Position averages and heatmaps are prototype indicators based on generic person 
 
 ## Release signing (Android)
 
-The release workflow builds version `0.2.0`. A signed release is produced only when the repository has all four Actions secrets configured:
+The release workflow builds version `0.3.0`. A signed release is produced only when the repository has all four Actions secrets configured:
 
 - `ANDROID_KEYSTORE_BASE64` — base64-encoded keystore file.
 - `ANDROID_KEYSTORE_PASSWORD` — keystore password.
@@ -75,4 +76,9 @@ The release workflow builds version `0.2.0`. A signed release is produced only w
 
 Store the keystore securely offline and back it up. Do not commit it to the public repository. The same signing key must be retained for future app updates. Without all four secrets the workflow produces an explicitly labelled **unsigned** release APK artifact; that file is not installable as a normal production app until signed with your release key.
 
-Run the workflow from GitHub Actions → Android Release APK → Run workflow. When signing is configured, the workflow uploads the signed APK and publishes the `v0.2.0` GitHub Release. When signing is absent, it uploads only the unsigned release artifact for inspection.
+Run the workflow from GitHub Actions → Android Release APK → Run workflow. When signing is configured, the workflow uploads the signed APK and publishes the `v0.3.0` GitHub Release. When signing is absent, it uploads only the unsigned release artifact for inspection.
+
+
+## API bearer-token configuration
+
+For a single-instance private deployment, set `TVI_API_TOKEN` to a long random value and set `TVI_ENVIRONMENT=production`. The backend refuses to start in production mode without this token and requires `Authorization: Bearer <token>` on API routes (health and API documentation remain public). Enter the same token in the app's backend connection screen. This is a shared service token, not multi-user identity, account isolation or per-user media ownership. Put the backend behind HTTPS before using real footage; the release Android manifest disallows cleartext HTTP.

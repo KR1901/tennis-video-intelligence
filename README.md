@@ -75,7 +75,7 @@ The API validates uploads, inspects media with ffprobe, extracts timestamped fra
 
 ## Android prototype
 
-See [the Android setup and usage guide](android/README.md). The app includes upload/inspection, court-corner suggestions, visible calibration taps, baseline projection, analysis progress, position heatmaps, event review, manual event entry and SVG report export. Debug and release builds are checked by GitHub Actions.
+See [the Android setup and usage guide](android/README.md). The app includes upload/inspection, court-corner suggestions, visible calibration taps, baseline projection, sampled candidate analysis, position heatmaps, manual event metadata, native seekable video playback, video deletion, and SVG/PNG/PDF report export. Debug and release builds are checked by GitHub Actions.
 
 ## Release signing
 
@@ -91,8 +91,9 @@ Environment variables use the `TVI_` prefix:
 | `TVI_STORAGE_DIR` | `./data/videos` | Local uploaded-video directory |
 | `TVI_MAX_UPLOAD_MB` | `2048` | Maximum upload size |
 | `TVI_ALLOWED_ORIGINS` | `http://localhost:8080` | CORS origins, comma-separated |
+| `TVI_API_TOKEN` | empty | Optional shared bearer token; required when `TVI_ENVIRONMENT=production` |
 
-Do not expose the development server directly to the public internet. Production deployments need authentication, per-user quotas, malware/content checks, private object storage, retention controls and signed download URLs.
+Do not expose the development server directly to the public internet. Production deployments still need individual user identity and access isolation, quotas, durable job processing, private object storage, malware/content checks and retention controls. The optional bearer token is a shared service credential, not multi-user authentication. Do not expose the local-file backend publicly without HTTPS and additional operational hardening.
 
 ## Design principles
 

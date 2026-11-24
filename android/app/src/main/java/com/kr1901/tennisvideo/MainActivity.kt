@@ -3,6 +3,9 @@ package com.kr1901.tennisvideo
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.net.Uri
+import android.widget.MediaController
+import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -52,8 +55,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kr1901.tennisvideo.data.VideoApi
@@ -95,6 +100,8 @@ private fun TennisVideoApp() {
     val scope = rememberCoroutineScope()
 
     var apiBaseUrl by remember { mutableStateOf("http://10.0.2.2:8000") }
+    var apiToken by remember { mutableStateOf("") }
+    var showVideoPreview by remember { mutableStateOf(false) }
     var selectedUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var selectedName by remember { mutableStateOf("No video selected") }
     var videoId by remember { mutableStateOf<String?>(null) }
@@ -114,8 +121,42 @@ private fun TennisVideoApp() {
     var analysisSummary by remember { mutableStateOf<JSONObject?>(null) }
     var manualEventTimestamp by remember { mutableStateOf("10.0") }
     var manualEventType by remember { mutableStateOf("serve_bounce") }
+    var manualServeNumber by remember { mutableStateOf("") }
+    var manualServeResult by remember { mutableStateOf("") }
+    var manualShotDepth by remember { mutableStateOf("") }
+    var manualShotDirection by remember { mutableStateOf("") }
     var reportBytes by remember { mutableStateOf<ByteArray?>(null) }
     val eventCandidates = remember { mutableStateListOf<JSONObject>() }
+
+    val reportPngSaver = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("image/png"),
+        onResult = { uri ->
+            val bytes = reportBytes
+            if (uri != null && bytes != null) {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    statusMessage = "PNG report saved."
+                } catch (error: Exception) {
+                    statusMessage = "Could not save PNG report: ${error.message}"
+                }
+            }
+        }
+    )
+
+    val reportPdfSaver = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf"),
+        onResult = { uri ->
+            val bytes = reportBytes
+            if (uri != null && bytes != null) {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    statusMessage = "PDF report saved."
+                } catch (error: Exception) {
+                    statusMessage = "Could not save PDF report: ${error.message}"
+                }
+            }
+        }
+    )
 
     val reportSaver = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("image/svg+xml"),
@@ -162,7 +203,7 @@ private fun TennisVideoApp() {
         }
     )
 
-    fun api(): VideoApi = VideoApi(apiBaseUrl, context.contentResolver)
+    fun api(): VideoApi = VideoApi(apiBaseUrl, context.contentResolver, apiToken)
 
     fun refreshAnalysis() {
         val id = analysisId ?: return
@@ -257,6 +298,14 @@ private fun TennisVideoApp() {
                         label = { Text("Backend URL") },
                         singleLine = true
                     )
+                    OutlinedTextField(
+                        value = apiToken,
+                        onValueChange = { apiToken = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("API bearer token (required in production)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true
+                    )
                     OutlinedButton(
                         onClick = {
                             scope.launch {
@@ -330,6 +379,58 @@ private fun TennisVideoApp() {
                     }
                     if (videoId != null) {
                         Text("Video ID: $videoId", color = CourtGreen, fontSize = 12.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { showVideoPreview = !showVideoPreview },
+                                enabled = !busy,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(if (showVideoPreview) "Hide video" else "Play uploaded video")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    val id = videoId
+                                    if (id != null) {
+                                        scope.launch {
+                                            busy = true
+                                            try {
+                                                withContext(Dispatchers.IO) { api().deleteVideo(id) }
+                                                videoId = null
+                                                calibrationId = null
+                                                analysisId = null
+                                                analysisSummary = null
+                                                eventCandidates.clear()
+                                                frameBitmap = null
+                                                calibrationPoints.clear()
+                                                selectedPlayerPoint = null
+                                                showVideoPreview = false
+                                                statusMessage = "Uploaded video and its analysis files were deleted."
+                                            } catch (error: Exception) {
+                                                statusMessage = "Delete failed: ${error.message}"
+                                            } finally {
+                                                busy = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !busy,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Delete video")
+                            }
+                        }
+                        if (showVideoPreview) {
+                            AndroidView(
+                                factory = { viewContext ->
+                                    VideoView(viewContext).apply {
+                                        setMediaController(MediaController(viewContext).also { it.setAnchorView(this) })
+                                        setVideoURI(Uri.parse(api().videoStreamUrl(videoId!!)), api().videoStreamHeaders())
+                                        setOnPreparedListener { player -> player.start() }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(250.dp)
+                            )
+                        }
                         OutlinedButton(
                             onClick = {
                                 scope.launch {
@@ -722,8 +823,32 @@ private fun TennisVideoApp() {
                                 fontSize = 12.sp
                             )
                             Text(
+                                "First / second serves: ${serves.optInt("first_serve_events")} / ${serves.optInt("second_serve_events")} · " +
+                                    "Serve-in rate: ${if (serves.isNull("serve_in_percentage")) "N/A" else String.format(Locale.US, "%.1f%%", serves.optDouble("serve_in_percentage"))}",
+                                color = Muted,
+                                fontSize = 11.sp
+                            )
+                            val serveZones = serves.optJSONObject("zones") ?: JSONObject()
+                            val shotDepths = shots.optJSONObject("depths") ?: JSONObject()
+                            Text(
+                                "Serve zones T / body / wide: ${serveZones.optInt("T")} / ${serveZones.optInt("body")} / ${serveZones.optInt("wide")}",
+                                color = Muted,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                "Shot depth short / mid / deep: ${shotDepths.optInt("short")} / ${shotDepths.optInt("mid_court")} / ${shotDepths.optInt("deep")}",
+                                color = Muted,
+                                fontSize = 11.sp
+                            )
+                            Text(
                                 "Completed points: ${rallies.optInt("completed_points")} · " +
-                                    "Winners / forced / unforced errors: ${winnerError.optInt("winners")} / " +
+                                    "Incomplete: ${rallies.optInt("incomplete_points")} · " +
+                                    "Mean contacts: ${if (rallies.isNull("average_contacts_per_point")) "N/A" else String.format(Locale.US, "%.1f", rallies.optDouble("average_contacts_per_point"))}",
+                                color = Muted,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                "Winners / forced / unforced errors: ${winnerError.optInt("winners")} / " +
                                     "${winnerError.optInt("forced_errors")} / ${winnerError.optInt("unforced_errors")}",
                                 color = Muted,
                                 fontSize = 11.sp
@@ -752,6 +877,47 @@ private fun TennisVideoApp() {
                             ) {
                                 Text("Save SVG court report")
                             }
+
+                            OutlinedButton(
+                                onClick = {
+                                    val id = analysisId
+                                    if (id != null) {
+                                        scope.launch {
+                                            busy = true
+                                            try {
+                                                reportBytes = withContext(Dispatchers.IO) { api().getAnalysisReportPng(id) }
+                                                reportPngSaver.launch("tennis-match-report.png")
+                                            } catch (error: Exception) {
+                                                statusMessage = "PNG export failed: ${error.message}"
+                                            } finally {
+                                                busy = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = analysisStatus == "completed" && !busy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Save PNG report") }
+                            OutlinedButton(
+                                onClick = {
+                                    val id = analysisId
+                                    if (id != null) {
+                                        scope.launch {
+                                            busy = true
+                                            try {
+                                                reportBytes = withContext(Dispatchers.IO) { api().getAnalysisReportPdf(id) }
+                                                reportPdfSaver.launch("tennis-match-report.pdf")
+                                            } catch (error: Exception) {
+                                                statusMessage = "PDF export failed: ${error.message}"
+                                            } finally {
+                                                busy = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = analysisStatus == "completed" && !busy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Save PDF report") }
                         }
                     }
                 }
@@ -852,8 +1018,37 @@ private fun TennisVideoApp() {
                             label = { Text("Event type") },
                             singleLine = true
                         )
+                        OutlinedTextField(
+                            value = manualServeNumber,
+                            onValueChange = { manualServeNumber = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Serve number (1 or 2, optional)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = manualServeResult,
+                            onValueChange = { manualServeResult = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Serve result (in/fault/ace/double_fault/let)") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = manualShotDepth,
+                            onValueChange = { manualShotDepth = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Shot depth (short/mid_court/deep)") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = manualShotDirection,
+                            onValueChange = { manualShotDirection = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Shot direction (crosscourt/down_the_line/middle)") },
+                            singleLine = true
+                        )
                         Text(
-                            "Types: serve_bounce, shot_bounce, racket_contact, point_start, point_end, net_contact, serve_plus_one, return_plus_one, winner, forced_error, unforced_error, manual_note.",
+                            "Types also include serve_attempt. Optional metadata is validated by the backend.",
                             color = Muted,
                             fontSize = 10.sp
                         )
@@ -875,7 +1070,11 @@ private fun TennisVideoApp() {
                                                     timestamp,
                                                     type,
                                                     playerEnd + "_player",
-                                                    "Manually confirmed from the video review."
+                                                    "Manually confirmed from the video review.",
+                                                    manualServeNumber.toIntOrNull()?.takeIf { it == 1 || it == 2 },
+                                                    manualServeResult.trim().ifBlank { null },
+                                                    manualShotDepth.trim().ifBlank { null },
+                                                    manualShotDirection.trim().ifBlank { null }
                                                 )
                                             }
                                             refreshAnalysis()
