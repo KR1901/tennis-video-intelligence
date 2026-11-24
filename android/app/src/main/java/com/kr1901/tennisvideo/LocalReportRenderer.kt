@@ -275,7 +275,11 @@ internal object LocalReportRenderer {
         val shotTotal = matchMetrics?.optInt("shot_depth_total", 0) ?: 0
         val acceptedEvents = matchMetrics?.optInt("accepted_events", 0) ?: reviewedEvents.size
         val completedRallies = matchMetrics?.optInt("rallies_completed", 0) ?: 0
-        val reviewSummary = "Reviewed annotations: $acceptedEvents accepted · $serveTotal serve locations · $shotTotal shot locations · $completedRallies complete rallies"
+        val returnPositions = matchMetrics?.optJSONArray("return_positions") ?: JSONArray()
+        val returnObservations = (0 until returnPositions.length()).sumOf { index ->
+            returnPositions.optJSONObject(index)?.optInt("observations") ?: 0
+        }
+        val reviewSummary = "Reviewed annotations: $acceptedEvents accepted · $serveTotal serve locations · $shotTotal shot locations · $returnObservations returner observations · $completedRallies complete rallies"
         val playerMetrics = matchMetrics?.optJSONArray("players") ?: JSONArray()
         val playerSummary = (0 until playerMetrics.length()).mapNotNull { index ->
             val player = playerMetrics.optJSONObject(index) ?: return@mapNotNull null
