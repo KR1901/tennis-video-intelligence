@@ -13,9 +13,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,7 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -47,7 +49,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -72,7 +76,64 @@ import kotlin.math.min
 
 private val CourtGreen = Color(0xFF16A085)
 private val Ink = Color(0xFF17222D)
+
 private val Muted = Color(0xFF64717C)
+
+@Composable
+private fun GlassCard(
+    modifier: Modifier = Modifier,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(24.dp),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val glassFill = Brush.verticalGradient(
+        colors = listOf(
+            Color.White.copy(alpha = 0.88f),
+            Color(0xFFEAF1FC).copy(alpha = 0.78f),
+            Color(0xFFF8FAFF).copy(alpha = 0.86f)
+        )
+    )
+    Surface(
+        modifier = modifier
+            .shadow(
+                elevation = 18.dp,
+                shape = shape,
+                ambientColor = Color(0x24394D70),
+                spotColor = Color(0x24394D70)
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.98f),
+                        Color.White.copy(alpha = 0.42f),
+                        Color(0xFFB9C7DD).copy(alpha = 0.48f)
+                    )
+                ),
+                shape = shape
+            ),
+        shape = shape,
+        color = Color.Transparent,
+        contentColor = Ink,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier.background(glassFill, shape),
+            content = content
+        )
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    val units = listOf("B", "KB", "MB", "GB")
+    var value = bytes.toDouble()
+    var unit = 0
+    while (value >= 1024.0 && unit < units.lastIndex) {
+        value /= 1024.0
+        unit += 1
+    }
+    return if (unit == 0) bytes.toString() + " " + units[unit] else String.format(Locale.US, "%.1f %s", value, units[unit])
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,8 +144,9 @@ class MainActivity : ComponentActivity() {
                     primary = CourtGreen,
                     onPrimary = Color.White,
                     secondary = Ink,
-                    background = Color(0xFFF5F7F8),
-                    surface = Color.White,
+                    background = Color(0xFFF0F3FA),
+                    surface = Color(0xEFFFFFFF),
+                    surfaceVariant = Color(0xDCEAF0F8),
                     onSurface = Ink,
                 )
             ) {
@@ -99,7 +161,7 @@ private fun TennisVideoApp() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var apiBaseUrl by remember { mutableStateOf("http://10.0.2.2:8000") }
+    var apiBaseUrl by remember { mutableStateOf(if (BuildConfig.DEBUG) "http://10.0.2.2:8000" else "") }
     var apiToken by remember { mutableStateOf("") }
     var showVideoPreview by remember { mutableStateOf(false) }
     var selectedUri by remember { mutableStateOf<android.net.Uri?>(null) }
@@ -114,6 +176,9 @@ private fun TennisVideoApp() {
     var measurementSummary by remember { mutableStateOf("No position measured yet.") }
     var statusMessage by remember { mutableStateOf("Connect to the backend to begin.") }
     var busy by remember { mutableStateOf(false) }
+    var uploadProgress by remember { mutableStateOf(0f) }
+    var uploadedBytes by remember { mutableStateOf(0L) }
+    var uploadTotalBytes by remember { mutableStateOf(0L) }
     val calibrationPoints = remember { mutableStateListOf<Pair<Float, Float>>() }
     var analysisId by remember { mutableStateOf<String?>(null) }
     var analysisStatus by remember { mutableStateOf("Not started") }
@@ -184,6 +249,9 @@ private fun TennisVideoApp() {
                     )
                 }
                 selectedUri = uri
+                uploadProgress = 0f
+                uploadedBytes = 0L
+                uploadTotalBytes = 0L
                 analysisId = null
                 analysisSummary = null
                 eventCandidates.clear()
@@ -203,7 +271,12 @@ private fun TennisVideoApp() {
         }
     )
 
-    fun api(): VideoApi = VideoApi(apiBaseUrl, context.contentResolver, apiToken)
+    fun api(): VideoApi = VideoApi(
+        apiBaseUrl,
+        context.contentResolver,
+        apiToken,
+        context.getSharedPreferences("tvi_upload_state", android.content.Context.MODE_PRIVATE)
+    )
 
     fun refreshAnalysis() {
         val id = analysisId ?: return
@@ -263,14 +336,48 @@ private fun TennisVideoApp() {
         }
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
+    Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            Color(0xFFF3F7FC),
+                            Color(0xFFE9EDF8),
+                            Color(0xFFF8F8FC)
+                        )
+                    )
+                )
         ) {
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val glowRadius = size.minDimension * 0.46f
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFF91DCCF).copy(alpha = 0.36f), Color.Transparent),
+                        center = Offset(size.width * 0.12f, size.height * 0.16f),
+                        radius = glowRadius
+                    ),
+                    radius = glowRadius,
+                    center = Offset(size.width * 0.12f, size.height * 0.16f)
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFB6C3F2).copy(alpha = 0.38f), Color.Transparent),
+                        center = Offset(size.width * 0.92f, size.height * 0.43f),
+                        radius = glowRadius
+                    ),
+                    radius = glowRadius,
+                    center = Offset(size.width * 0.92f, size.height * 0.43f)
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = "Tennis Video Intelligence",
@@ -285,7 +392,7 @@ private fun TennisVideoApp() {
                 )
             }
 
-            Card(shape = RoundedCornerShape(16.dp)) {
+            GlassCard(shape = RoundedCornerShape(16.dp)) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -296,6 +403,10 @@ private fun TennisVideoApp() {
                         onValueChange = { apiBaseUrl = it },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Backend URL") },
+                        placeholder = { Text("https://your-api.example.com") },
+                        supportingText = {
+                            Text("Production requires HTTPS. http://10.0.2.2:8000 is only for the Android emulator in a debug build.")
+                        },
                         singleLine = true
                     )
                     OutlinedTextField(
@@ -329,7 +440,7 @@ private fun TennisVideoApp() {
                 }
             }
 
-            Card(shape = RoundedCornerShape(16.dp)) {
+            GlassCard(shape = RoundedCornerShape(16.dp)) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -351,9 +462,20 @@ private fun TennisVideoApp() {
                                     scope.launch {
                                         busy = true
                                         statusMessage = "Uploading video..."
+                                        uploadProgress = 0f
+                                        uploadedBytes = 0L
+                                        uploadTotalBytes = 0L
                                         try {
                                             val response = withContext(Dispatchers.IO) {
-                                                api().uploadVideo(uri)
+                                                api().uploadVideo(uri) { sent, total ->
+                                                    scope.launch {
+                                                        uploadedBytes = sent
+                                                        uploadTotalBytes = total
+                                                        uploadProgress = if (total > 0L) {
+                                                            sent.toFloat() / total.toFloat()
+                                                        } else 0f
+                                                    }
+                                                }
                                             }
                                             videoId = response.getString("video_id")
                                             analysisId = null
@@ -376,6 +498,17 @@ private fun TennisVideoApp() {
                         ) {
                             Text("Upload")
                         }
+                    }
+                    if (uploadTotalBytes > 0L && (busy || uploadProgress >= 1f)) {
+                        LinearProgressIndicator(
+                            progress = { uploadProgress.coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            "${formatBytes(uploadedBytes)} of ${formatBytes(uploadTotalBytes)} · ${"%.0f".format(Locale.US, uploadProgress * 100f)}%",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
                     }
                     if (videoId != null) {
                         Text("Video ID: $videoId", color = CourtGreen, fontSize = 12.sp)
@@ -465,7 +598,7 @@ private fun TennisVideoApp() {
             }
 
             if (videoId != null) {
-                Card(shape = RoundedCornerShape(16.dp)) {
+                GlassCard(shape = RoundedCornerShape(16.dp)) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -579,7 +712,7 @@ private fun TennisVideoApp() {
                 }
 
                 if (frameBitmap != null) {
-                    Card(shape = RoundedCornerShape(16.dp)) {
+                    GlassCard(shape = RoundedCornerShape(16.dp)) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -732,7 +865,7 @@ private fun TennisVideoApp() {
 
 
             if (videoId != null) {
-                Card(shape = RoundedCornerShape(16.dp)) {
+                GlassCard(shape = RoundedCornerShape(16.dp)) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -924,7 +1057,7 @@ private fun TennisVideoApp() {
             }
 
             if (analysisId != null && analysisStatus == "completed") {
-                Card(shape = RoundedCornerShape(16.dp)) {
+                GlassCard(shape = RoundedCornerShape(16.dp)) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -939,7 +1072,7 @@ private fun TennisVideoApp() {
                             Text("No trajectory-change candidates were detected in this video.", color = Muted, fontSize = 12.sp)
                         }
                         eventCandidates.take(12).forEach { event ->
-                            Card(shape = RoundedCornerShape(10.dp)) {
+                            GlassCard(shape = RoundedCornerShape(10.dp)) {
                                 Column(
                                     modifier = Modifier.padding(10.dp),
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -997,7 +1130,7 @@ private fun TennisVideoApp() {
             }
 
             if (analysisId != null && analysisStatus == "completed") {
-                Card(shape = RoundedCornerShape(16.dp)) {
+                GlassCard(shape = RoundedCornerShape(16.dp)) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1095,7 +1228,7 @@ private fun TennisVideoApp() {
                 }
             }
 
-            Card(shape = RoundedCornerShape(16.dp)) {
+            GlassCard(shape = RoundedCornerShape(16.dp)) {
                 Row(
                     modifier = Modifier.padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1115,6 +1248,7 @@ private fun TennisVideoApp() {
                 fontSize = 11.sp,
                 modifier = Modifier.padding(bottom = 20.dp)
             )
+            }
         }
     }
 }
@@ -1122,7 +1256,7 @@ private fun TennisVideoApp() {
 
 @Composable
 private fun PlayerMetric(title: String, player: JSONObject) {
-    Card(modifier = Modifier.width(155.dp), shape = RoundedCornerShape(12.dp)) {
+    GlassCard(modifier = Modifier.width(155.dp), shape = RoundedCornerShape(12.dp)) {
         Column(
             modifier = Modifier.padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)

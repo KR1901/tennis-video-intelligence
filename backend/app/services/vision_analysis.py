@@ -17,7 +17,7 @@ from app.services.court_geometry import (
 )
 
 MAX_ANALYSIS_SAMPLES = 32_000
-DEFAULT_SAMPLE_INTERVAL = 1.0 / 3.0
+DEFAULT_SAMPLE_INTERVAL = 0.5
 MAX_ANALYSIS_WIDTH = 960
 
 
@@ -406,12 +406,16 @@ def run_analysis_job(
 
     try:
         while sampled < maximum_samples:
-            ok, frame = capture.read()
+            ok = capture.grab()
             if not ok:
                 break
             current_index = frame_index
             frame_index += 1
             if current_index % stride != 0:
+                continue
+
+            ok, frame = capture.retrieve()
+            if not ok or frame is None:
                 continue
 
             sampled += 1
