@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,7 +45,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.ContentScale
@@ -58,8 +61,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
-import org.json.JSONObject
 import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.min
 
 private val CourtGreen = Color(0xFF16A085)
@@ -148,39 +151,17 @@ private fun TennisVideoApp() {
                 frameBitmap = null
                 calibrationPoints.clear()
                 selectedPlayerPoint = null
+                analysisId = null
+                analysisSummary = null
+                eventCandidates.clear()
+                analysisStatus = "Not started"
                 statusMessage = "Video selected. Upload it to start."
             }
         }
     )
 
     fun api(): VideoApi = VideoApi(apiBaseUrl, context.contentResolver)
-\n    fun reviewCandidate(event: JSONObject, eventType: String?) {
-        val id = analysisId ?: return
-        val eventId = event.optString("event_id")
-        if (eventId.isBlank()) return
-        scope.launch {
-            busy = true
-            statusMessage = "Saving event review..."
-            try {
-                withContext(Dispatchers.IO) {
-                    api().reviewEvent(
-                        id,
-                        eventId,
-                        eventType,
-                        accepted = eventType != null,
-                        note = "Reviewed by the Android user."
-                    )
-                }
-                refreshAnalysis()
-            } catch (error: Exception) {
-                statusMessage = "Event review failed: ${error.message}"
-                busy = false
-            }
-        }
-    }
-
-
-    fun refreshAnalysis() {
+\n    fun refreshAnalysis() {
         val id = analysisId ?: return
         scope.launch {
             busy = true
@@ -206,6 +187,33 @@ private fun TennisVideoApp() {
             } catch (error: Exception) {
                 statusMessage = "Analysis refresh failed: ${error.message}"
             } finally {
+                busy = false
+            }
+        }
+    }
+
+
+
+    fun reviewCandidate(event: JSONObject, eventType: String?) {
+        val id = analysisId ?: return
+        val eventId = event.optString("event_id")
+        if (eventId.isBlank()) return
+        scope.launch {
+            busy = true
+            statusMessage = "Saving event review..."
+            try {
+                withContext(Dispatchers.IO) {
+                    api().reviewEvent(
+                        id,
+                        eventId,
+                        eventType,
+                        accepted = eventType != null,
+                        note = "Reviewed by the Android user."
+                    )
+                }
+                refreshAnalysis()
+            } catch (error: Exception) {
+                statusMessage = "Event review failed: ${error.message}"
                 busy = false
             }
         }
@@ -616,6 +624,184 @@ private fun TennisVideoApp() {
                 }
             }
 
+
+            if (analysisId != null) {
+                Card(shape = RoundedCornerShape(16.dp)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        SectionHeading("5", "Automatic match analysis")
+                        Text(
+                            "Run court, player-position and tennis-ball candidate detection on the uploaded match. A verified manual calibration is recommended.",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    busy = true
+                                    statusMessage = "Starting automatic analysis..."
+                                    try {
+                                        val response = withContext(Dispatchers.IO) {
+                                            api().startAnalysis(videoId!!, calibrationId)
+                                        }
+                                        analysisId = response.getString("analysis_id")
+                                        analysisStatus = response.optString("status", "queued")
+                                        analysisProgress = response.optInt("progress_pct", 0)
+                                        analysisSummary = null
+                                        eventCandidates.clear()
+                                        statusMessage = "Analysis queued. Refresh for progress."
+                                    } catch (error: Exception) {
+                                        statusMessage = "Could not start analysis: ${error.message}"
+                                    } finally {
+                                        busy = false
+                                    }
+                                }
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Start a new analysis")
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(analysisStatus, color = Ink, fontWeight = FontWeight.SemiBold)
+                            Text("$analysisProgress%", color = CourtGreen, fontWeight = FontWeight.Bold)
+                            OutlinedButton(onClick = { refreshAnalysis() }, enabled = !busy) {
+                                Text("Refresh")
+                            }
+                        }
+                        analysisSummary?.let { summary ->
+                            val players = summary.optJSONObject("players") ?: JSONObject()
+                            val near = players.optJSONObject("near_player") ?: JSONObject()
+                            val far = players.optJSONObject("far_player") ?: JSONObject()
+                            Text("Baseline positioning (metres)", color = Ink, fontWeight = FontWeight.Bold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PlayerMetric("Near player", near)
+                                PlayerMetric("Far player", far)
+                            }
+                            val calibration = summary.optJSONObject("calibration") ?: JSONObject()
+                            Text(
+                                "Court calibration: ${calibration.optString("mode", "unknown")}" +
+                                    if (calibration.optBoolean("requires_confirmation", true)) " · confirm required" else "",
+                                color = Muted,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                "Player-detection coverage: ${String.format(Locale.US, "%.1f%%", summary.optDouble("player_detection_coverage_pct", 0.0))} · " +
+                                    "Ball candidates: ${summary.optInt("ball_candidates")}",
+                                color = Muted,
+                                fontSize = 12.sp
+                            )
+                            val heatmaps = summary.optJSONObject("position_heatmaps")
+                            if (heatmaps != null) {
+                                Text("Position heatmaps", color = Ink, fontWeight = FontWeight.Bold)
+                                CourtHeatmap(parseGrid(heatmaps.optJSONArray("near_player")))
+                                Text("Near player", color = Muted, fontSize = 10.sp)
+                                CourtHeatmap(parseGrid(heatmaps.optJSONArray("far_player")))
+                                Text("Far player", color = Muted, fontSize = 10.sp)
+                            }
+                            val reviewed = summary.optJSONObject("reviewed_metrics") ?: JSONObject()
+                            val serves = reviewed.optJSONObject("serve_placement") ?: JSONObject()
+                            val shots = reviewed.optJSONObject("shot_placement") ?: JSONObject()
+                            val rallies = reviewed.optJSONObject("rally_length") ?: JSONObject()
+                            val winnerError = reviewed.optJSONObject("winner_error_classification") ?: JSONObject()
+                            Text(
+                                "Reviewed serves: ${serves.optInt("confirmed_serves")} · " +
+                                    "Reviewed bounces: ${shots.optInt("confirmed_bounces")}",
+                                color = Ink,
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                "Completed points: ${rallies.optInt("completed_points")} · " +
+                                    "Winners / forced / unforced errors: ${winnerError.optInt("winners")} / " +
+                                    "${winnerError.optInt("forced_errors")} / ${winnerError.optInt("unforced_errors")}",
+                                color = Muted,
+                                fontSize = 11.sp
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    val id = analysisId
+                                    if (id != null) {
+                                        scope.launch {
+                                            busy = true
+                                            try {
+                                                reportBytes = withContext(Dispatchers.IO) {
+                                                    api().getAnalysisReportSvg(id)
+                                                }
+                                                reportSaver.launch("tennis-match-report.svg")
+                                            } catch (error: Exception) {
+                                                statusMessage = "Report export failed: ${error.message}"
+                                            } finally {
+                                                busy = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = analysisStatus == "completed" && !busy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Save SVG court report")
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (analysisId != null && analysisStatus == "completed") {
+                Card(shape = RoundedCornerShape(16.dp)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        SectionHeading("6", "Review event candidates")
+                        Text(
+                            "Only human-accepted, explicitly labelled events contribute to serve, shot, rally and winner/error statistics.",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                        if (eventCandidates.isEmpty()) {
+                            Text("No trajectory-change candidates were detected in this video.", color = Muted, fontSize = 12.sp)
+                        }
+                        eventCandidates.take(12).forEach { event ->
+                            Card(shape = RoundedCornerShape(10.dp)) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        "${event.optString("event_type")} · ${String.format(Locale.US, "%.2f s", event.optDouble("timestamp_seconds"))}",
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Ink,
+                                        fontSize = 12.sp
+                                    )
+                                    Text(
+                                        "Automatic candidate only. Check the video before accepting.",
+                                        color = Muted,
+                                        fontSize = 10.sp
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        OutlinedButton(onClick = { reviewCandidate(event, "serve_bounce") }, enabled = !busy) { Text("Serve") }
+                                        OutlinedButton(onClick = { reviewCandidate(event, "shot_bounce") }, enabled = !busy) { Text("Bounce") }
+                                        OutlinedButton(onClick = { reviewCandidate(event, "racket_contact") }, enabled = !busy) { Text("Contact") }
+                                        OutlinedButton(onClick = { reviewCandidate(event, null) }, enabled = !busy) { Text("Reject") }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        OutlinedButton(onClick = { reviewCandidate(event, "winner") }, enabled = !busy) { Text("Winner") }
+                                        OutlinedButton(onClick = { reviewCandidate(event, "forced_error") }, enabled = !busy) { Text("Forced error") }
+                                        OutlinedButton(onClick = { reviewCandidate(event, "unforced_error") }, enabled = !busy) { Text("Unforced error") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Card(shape = RoundedCornerShape(16.dp)) {
                 Row(
                     modifier = Modifier.padding(16.dp),
@@ -631,12 +817,85 @@ private fun TennisVideoApp() {
             }
 
             Text(
-                text = "Prototype note: corner and player-point selection are manual. This screen does not yet track players automatically.",
+                text = "Reliability note: generic HOG and colour-blob detections are unverified candidates, not validated tennis-specific models. Confirm court calibration and event labels before using statistics.",
                 color = Muted,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(bottom = 20.dp)
             )
         }
+    }
+}
+
+
+@Composable
+private fun PlayerMetric(title: String, player: JSONObject) {
+    Card(modifier = Modifier.width(155.dp), shape = RoundedCornerShape(12.dp)) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(title, color = Muted, fontSize = 11.sp)
+            val value = player.opt("average_baseline_distance_m")
+            val text = if (value == null || value == JSONObject.NULL) {
+                "N/A"
+            } else {
+                String.format(Locale.US, "%+.2f m", player.optDouble("average_baseline_distance_m"))
+            }
+            Text(text, color = CourtGreen, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "Behind: ${String.format(Locale.US, "%.0f%%", player.optDouble("behind_baseline_pct", 0.0))}",
+                color = Ink,
+                fontSize = 11.sp
+            )
+            Text("Samples: ${player.optInt("samples")}", color = Muted, fontSize = 10.sp)
+        }
+    }
+}
+
+private fun parseGrid(array: JSONArray?): List<List<Int>> {
+    if (array == null) return emptyList()
+    return buildList {
+        for (rowIndex in 0 until array.length()) {
+            val row = array.optJSONArray(rowIndex) ?: continue
+            add(buildList {
+                for (columnIndex in 0 until row.length()) add(row.optInt(columnIndex))
+            })
+        }
+    }
+}
+
+@Composable
+private fun CourtHeatmap(grid: List<List<Int>>) {
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(170.dp)
+            .clip(RoundedCornerShape(12.dp))
+    ) {
+        drawRect(Color(0xFF167A5B))
+        if (grid.isNotEmpty()) {
+            val maximum = grid.flatten().maxOrNull()?.coerceAtLeast(1) ?: 1
+            val columns = grid.firstOrNull()?.size?.coerceAtLeast(1) ?: 1
+            val cellWidth = size.width / columns
+            val cellHeight = size.height / grid.size
+            grid.forEachIndexed { rowIndex, row ->
+                row.forEachIndexed { columnIndex, value ->
+                    if (value > 0) {
+                        drawRect(
+                            color = Color(0xFFFFD166).copy(
+                                alpha = (value.toFloat() / maximum).coerceIn(0.15f, 0.85f)
+                            ),
+                            topLeft = Offset(columnIndex * cellWidth, rowIndex * cellHeight),
+                            size = androidx.compose.ui.geometry.Size(cellWidth, cellHeight)
+                        )
+                    }
+                }
+            }
+        }
+        drawLine(Color.White, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 2.dp.toPx())
+        drawLine(Color.White.copy(alpha = 0.8f), Offset(size.width * 0.125f, 0f), Offset(size.width * 0.125f, size.height), 1.dp.toPx())
+        drawLine(Color.White.copy(alpha = 0.8f), Offset(size.width * 0.875f, 0f), Offset(size.width * 0.875f, size.height), 1.dp.toPx())
+        drawRect(Color.White, style = Stroke(2.dp.toPx()))
     }
 }
 
