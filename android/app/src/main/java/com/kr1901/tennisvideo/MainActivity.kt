@@ -1585,6 +1585,27 @@ private fun MatchAnalyticsCard(analytics: TennisMatchAnalytics, onExportMetrics:
                 fontSize = 12.sp
             )
             HorizontalDivider(color = Color(0xFFDCE4EB))
+            Text("Return position at accepted serve markers", color = AppInk, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(
+                "Closest calibrated pose on the serve's target half within 1.2 seconds of a reviewed serve location. This is a sampled returner-position estimate, not a detected return stance.",
+                color = AppMuted,
+                fontSize = 11.sp
+            )
+            if (analytics.returnPositions.isEmpty()) {
+                Text("No located, accepted serve markers have a nearby calibrated player pose yet.", color = AppMuted, fontSize = 12.sp)
+            } else {
+                analytics.returnPositions.forEach { position ->
+                    Text(
+                        position.playerId + " · " + position.serveZone + " serve · " +
+                            position.observations + " observations · " +
+                            String.format(Locale.US, "%+.2f m baseline distance", position.averageSignedBaselineDistanceMeters) +
+                            " · " + String.format(Locale.US, "%.1f%% behind", position.behindBaselinePercent),
+                        color = AppInk,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+            HorizontalDivider(color = Color(0xFFDCE4EB))
             Text("Shot placement · accepted shot/contact locations: " + analytics.shotDepths.total, color = AppInk, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Text(
                 "Depth: short " + (analytics.shotDepths.counts["Short"] ?: 0) +
