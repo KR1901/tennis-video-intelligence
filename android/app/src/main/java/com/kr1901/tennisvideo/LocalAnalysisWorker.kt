@@ -70,11 +70,17 @@ class LocalAnalysisWorker(
                     while (timeMs < nextStartMs && !isStopped) {
                         val frame = decodeFrame(retriever, timeMs)
                         if (frame == null) {
+                            olderFrame?.recycle()
+                            previousFrame?.recycle()
+                            olderFrame = null
+                            previousFrame = null
+                            previousMotionPixels = null
                             additions.add(
                                 JSONObject()
                                     .put("timestamp_ms", timeMs)
                                     .put("decoded", false)
                                     .put("players", JSONArray())
+                                    .put("ball", JSONObject().put("detected", false))
                             )
                             timeMs += FRAME_INTERVAL_MS
                             sampleIndex++
@@ -146,14 +152,21 @@ class LocalAnalysisWorker(
                             .put("players", players)
 
                         if (ball != null) {
-                            sample.put(
-                                "ball",
-                                JSONObject()
-                                    .put("detected", true)
-                                    .put("x", ball.x)
-                                    .put("y", ball.y)
-                                    .put("confidence", ball.confidence)
-                            )
+                            val ballJson = JSONObject()
+                                .put("detected", true)
+                                .put("x", ball.x)
+                                .put("y", ball.y)
+                                .put("confidence", ball.confidence)
+                            if (courtCorners.size == 4) {
+                                val measurement = CourtProjector.project(courtCorners, ball.x, ball.y)
+                                if (measurement != null) {
+                                    ballJson.put("court_x_m", measurement.xMeters)
+                                        .put("court_y_m", measurement.yMeters)
+                                        .put("player_end", measurement.playerEnd)
+                                        .put("baseline_distance_m", measurement.baselineDistanceMeters)
+                                }
+                            }
+                            sample.put("ball", ballJson)
                         } else {
                             sample.put("ball", JSONObject().put("detected", false))
                         }
