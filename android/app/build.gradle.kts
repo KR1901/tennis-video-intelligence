@@ -80,6 +80,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
+    implementation("com.google.mediapipe:tasks-vision:1.2.3")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.32.0")
 
     testImplementation("junit:junit:4.13.2")
 
