@@ -5,18 +5,28 @@ import android.os.Build
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
+import java.io.File
 
 internal object LocalVideoInspector {
     fun inspect(context: Context, uri: Uri): LocalVideoMetadata {
         val resolver = context.contentResolver
         var displayName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected video"
         var sizeBytes = -1L
-        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val localFile = uri.path?.let(::File)
+            if (localFile != null && localFile.isFile) {
+                displayName = localFile.name
+                sizeBytes = localFile.length()
+            }
+        }
+        if (!uri.scheme.equals("file", ignoreCase = true)) {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
                 val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                 val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
                 if (nameIndex >= 0) displayName = cursor.getString(nameIndex) ?: displayName
                 if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) sizeBytes = cursor.getLong(sizeIndex)
+            }
             }
         }
         if (sizeBytes <= 0L) {
