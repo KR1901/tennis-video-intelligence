@@ -23,7 +23,7 @@ EventType = Literal[
 
 
 class AnalysisRequest(BaseModel):
-    sample_interval_seconds: float = Field(default=0.333, ge=0.1, le=2.0)
+    sample_interval_seconds: float = Field(default=0.5, ge=0.1, le=2.0)
     max_samples: int = Field(default=32_000, ge=100, le=32_000)
     calibration_id: str | None = None
     enable_ball_tracking: bool = True
