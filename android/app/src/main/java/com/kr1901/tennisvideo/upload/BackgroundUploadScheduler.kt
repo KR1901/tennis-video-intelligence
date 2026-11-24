@@ -2,10 +2,8 @@ package com.kr1901.tennisvideo.upload
 
 import android.app.job.JobInfo
 import android.app.job.JobScheduler
-import android.content.ClipData
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.PersistableBundle
@@ -46,11 +44,16 @@ object BackgroundUploadScheduler {
             throw IOException("Another video is uploading. Pause it before starting a different match.")
         }
         UploadRuntimeStore.markQueued(context, uri, totalBytes)
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        val scheduled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             scheduleUserInitiatedJob(context, uri, totalBytes)
         } else {
             scheduleWorkManager(context, uri, totalBytes)
         }
+        if (!scheduled) {
+            UploadRuntimeStore.markFailed(context, "Android could not schedule the background upload. Open the app and try again.")
+            throw IOException("Android could not schedule the background upload. Please try again.")
+        }
+        return true
     }
 
     fun cancel(context: Context) {
@@ -63,7 +66,8 @@ object BackgroundUploadScheduler {
     }
 
     private fun scheduleUserInitiatedJob(context: Context, uri: Uri, totalBytes: Long): Boolean {
-        val clip = ClipData.newUri(context.contentResolver, "Tennis match video", uri)
+        // OpenDocument granted this app a persistent read permission before scheduling.
+        // Keep the URI in persistable extras so this JobInfo can survive device reboot.
         val extras = PersistableBundle().apply {
             putString(VideoUploadJobService.KEY_URI, uri.toString())
             putLong(VideoUploadJobService.KEY_TOTAL_BYTES, totalBytes)
@@ -75,7 +79,6 @@ object BackgroundUploadScheduler {
             .setUserInitiated(true)
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
             .setEstimatedNetworkBytes(totalBytes, totalBytes)
-            .setClipData(clip, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             .setPersisted(true)
             .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
             .setExtras(extras)
