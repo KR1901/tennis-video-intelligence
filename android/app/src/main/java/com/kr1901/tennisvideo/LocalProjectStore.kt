@@ -211,9 +211,9 @@ internal object LocalProjectStore {
                         val sample = runCatching { JSONObject(line) }.getOrNull()
                         if (sample != null) {
                             applyCourtCalibration(sample, validCorners)
-                            writer.append(sample.toString()).append('\\n')
+                            writer.append(sample.toString()).append('\n')
                         } else {
-                            writer.append(line).append('\\n')
+                            writer.append(line).append('\n')
                         }
                     }
                 }
