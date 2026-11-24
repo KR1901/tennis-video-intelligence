@@ -40,6 +40,10 @@ object BackgroundUploadScheduler {
         val totalBytes = fileSize(context, uri)
         if (totalBytes <= 0L) throw IOException("Android could not determine the selected video's file size.")
 
+        val previous = UploadRuntimeStore.state(context)
+        if (previous.uri == uri && previous.status in listOf("QUEUED", "UPLOADING")) {
+            return true
+        }
         UploadRuntimeStore.markQueued(context, uri, totalBytes)
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             scheduleUserInitiatedJob(context, uri, totalBytes)
