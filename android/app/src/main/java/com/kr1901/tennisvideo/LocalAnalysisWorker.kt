@@ -127,7 +127,7 @@ class LocalAnalysisWorker(
                                 publishAnalysisStage(projectId, runId, "Loading TrackNet V1 ball model", sampleIndex, frameTotal, timeMs, durationMs, true)
                                 ballDetector = TrackNetBallDetector(applicationContext)
                             }
-                            publishAnalysisStage(projectId, runId, "Running TrackNet ball inference", sampleIndex, frameTotal, timeMs, durationMs, true)
+                            publishAnalysisStage(projectId, runId, "Running TrackNet ball inference", sampleIndex, frameTotal, timeMs, durationMs, sampleIndex == 2 || sampleIndex % NOTIFICATION_FRAME_INTERVAL == 0)
                             ballDetector!!.detect(frame, previousFrame!!, olderFrame!!)
                         } else {
                             null
@@ -135,7 +135,7 @@ class LocalAnalysisWorker(
 
                         val players = JSONArray()
                         if (sampleIndex % POSE_SAMPLE_EVERY_N_FRAMES == 0) {
-                            publishAnalysisStage(projectId, runId, "Running MediaPipe pose inference", sampleIndex, frameTotal, timeMs, durationMs, true)
+                            publishAnalysisStage(projectId, runId, "Running MediaPipe pose inference", sampleIndex, frameTotal, timeMs, durationMs, sampleIndex % NOTIFICATION_FRAME_INTERVAL == 0)
                             val poses = poseAnalyzer.detect(frame, timeMs)
                             tracker.assign(poses).forEach { tracked ->
                                 players.put(playerToJson(tracked.playerId, tracked.pose, courtCorners))
