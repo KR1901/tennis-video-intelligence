@@ -38,3 +38,17 @@ class VideoStatusResponse(BaseModel):
     status: Literal["uploaded", "inspected"]
     created_at: datetime
     media_info: MediaInspectionResponse | None = None
+
+
+class ResumableUploadCreateRequest(BaseModel):
+    filename: str
+    content_type: str = "application/octet-stream"
+    size_bytes: int
+
+
+class ResumableUploadSessionResponse(BaseModel):
+    upload_id: str
+    upload_offset: int
+    upload_length: int
+    chunk_size_bytes: int
+    expires_in_seconds: int = 604800
