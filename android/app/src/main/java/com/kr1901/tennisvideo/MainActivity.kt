@@ -1095,7 +1095,7 @@ private fun LocalTennisVideoApp() {
 
                 Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("3 · Analyse on this phone", fontWeight = FontWeight.Bold, color = AppInk)
+                        Text("4 · Analyse on this phone", fontWeight = FontWeight.Bold, color = AppInk)
                         Text(
                             "MediaPipe Pose proposes up to two people and TrackNet V1 proposes ball locations. Choose the temporal sampling rate below. Player feet can be projected into court metres only after you calibrate the four corners; generated events remain review candidates.",
                             color = AppMuted,
@@ -1252,7 +1252,7 @@ private fun LocalTennisVideoApp() {
 
             Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("5 · Event review", fontWeight = FontWeight.Bold, color = AppInk)
+                    Text("6 · Event review", fontWeight = FontWeight.Bold, color = AppInk)
                     Text(
                         "$reviewableEventCount candidate event(s) require review. These are not official or confirmed tennis events.",
                         color = AppMuted,
@@ -1410,7 +1410,7 @@ private fun LocalTennisVideoApp() {
 
             Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("6 · Export visual report", fontWeight = FontWeight.Bold, color = AppInk)
+                    Text("7 · Export visual report", fontWeight = FontWeight.Bold, color = AppInk)
                     Text(
                         "Create a court infographic using calibrated player trails, ball detections and manually reviewed event locations. Empty or uncalibrated observations are omitted instead of guessed.",
                         color = AppMuted,
