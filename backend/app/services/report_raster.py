@@ -88,9 +88,7 @@ def render_analysis_png(job: dict[str, Any]) -> bytes:
     net_y = (court_top + court_bottom) // 2
     cv2.line(canvas, (court_left, net_y), (court_right, net_y), white, 3)
     singles_offset = int(
-        court_width
-        * (COURT.doubles_width_m - COURT.singles_width_m)
-        / (2 * COURT.doubles_width_m)
+        court_width * (COURT.doubles_width_m - COURT.singles_width_m) / (2 * COURT.doubles_width_m)
     )
     cv2.line(
         canvas,
@@ -162,9 +160,7 @@ def render_analysis_png(job: dict[str, Any]) -> bytes:
     lines = [
         (
             "Serve attempts / in-rate",
-            f"{serve['recorded_attempts']} attempts; "
-            f"in-rate "
-            f"{serve['serve_in_percentage']:.1f}%"
+            f"{serve['recorded_attempts']} attempts; in-rate {serve['serve_in_percentage']:.1f}%"
             if serve["serve_in_percentage"] is not None
             else f"{serve['recorded_attempts']} attempts; in-rate N/A",
         ),
