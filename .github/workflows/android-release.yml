@@ -14,7 +14,7 @@ permissions:
 jobs:
   release-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -43,6 +43,18 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.6.0"
+
+      - name: Set up Python for model preparation
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare licensed on-device ML models
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
+          python -m pip install --no-cache-dir -r scripts/model-requirements.txt
+          python scripts/prepare_android_models.py
 
       - name: Configure release signing
         id: signing
@@ -100,6 +112,6 @@ jobs:
           APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           gh release create "$VERSION" "$APK" \
             --title "Tennis Video Intelligence $VERSION" \
-            --notes "Offline-first Android release. Select a local video, preview frames, calibrate court corners, save manually measured player ground points in court metres, and run background frame sampling without a hosted backend or video upload. Automated tennis player and ball tracking remain future work." \
+            --notes "Offline-first Android release. Includes on-device two-player pose detection, TrackNet V1 tennis-ball candidate tracking, court-calibrated positioning, background analysis, player/ball timeline and reviewed event candidates. Model assets are prepared from their licensed upstream sources during the release build. Automated event labels and tactical metrics remain confidence-gated and require review." \
             --target "$GITHUB_SHA" \
             --latest
