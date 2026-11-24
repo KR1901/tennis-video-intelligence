@@ -27,6 +27,8 @@ class LocalAnalysisWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val projectId = inputData.getString(KEY_PROJECT_ID) ?: return@withContext Result.failure()
         val startMs = inputData.getLong(KEY_START_MS, 0L).coerceAtLeast(0L)
+        val frameIntervalMs = inputData.getLong(KEY_FRAME_INTERVAL_MS, DEFAULT_FRAME_INTERVAL_MS)
+            .takeIf { it == 400L || it == 200L || it == 100L } ?: DEFAULT_FRAME_INTERVAL_MS
         val project = LocalProjectStore.load(applicationContext, projectId)
             ?: return@withContext Result.failure()
         val durationMs = project.optLong("duration_ms", 0L)
@@ -59,9 +61,9 @@ class LocalAnalysisWorker(
 
             // The first two frames of each continuation are context only: TrackNet requires
             // three consecutive images even when WorkManager starts a fresh process.
-            if (startMs >= FRAME_INTERVAL_MS * 2L) {
-                olderFrame = decodeFrame(retriever, startMs - FRAME_INTERVAL_MS * 2L)
-                previousFrame = decodeFrame(retriever, startMs - FRAME_INTERVAL_MS)
+            if (startMs >= frameIntervalMs * 2L) {
+                olderFrame = decodeFrame(retriever, startMs - frameIntervalMs * 2L)
+                previousFrame = decodeFrame(retriever, startMs - frameIntervalMs)
             }
 
             OnDevicePoseAnalyzer(applicationContext).use { poseAnalyzer ->
@@ -82,7 +84,7 @@ class LocalAnalysisWorker(
                                     .put("players", JSONArray())
                                     .put("ball", JSONObject().put("detected", false))
                             )
-                            timeMs += FRAME_INTERVAL_MS
+                            timeMs += frameIntervalMs
                             sampleIndex++
                             continue
                         }
@@ -240,7 +242,8 @@ class LocalAnalysisWorker(
                 .setInputData(
                     workDataOf(
                         KEY_PROJECT_ID to projectId,
-                        KEY_START_MS to nextStartMs
+                        KEY_START_MS to nextStartMs,
+                        KEY_FRAME_INTERVAL_MS to frameIntervalMs
                     )
                 )
                 .addTag(tag(projectId))
@@ -365,7 +368,8 @@ class LocalAnalysisWorker(
     companion object {
         const val KEY_PROJECT_ID = "project_id"
         const val KEY_START_MS = "start_ms"
-        private const val FRAME_INTERVAL_MS = 200L
+        const val KEY_FRAME_INTERVAL_MS = "frame_interval_ms"
+        private const val DEFAULT_FRAME_INTERVAL_MS = 200L
         private const val CHUNK_DURATION_MS = 5_000L
         private const val POSE_SAMPLE_EVERY_N_FRAMES = 2
         private const val MODEL_WIDTH = 640
