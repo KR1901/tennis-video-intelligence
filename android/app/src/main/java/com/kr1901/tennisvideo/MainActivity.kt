@@ -325,6 +325,27 @@ private fun LocalTennisVideoApp() {
         }
     )
 
+    val metricsCsvExporter = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+        onResult = { uri ->
+            val id = projectId
+            if (uri != null && id != null) scope.launch {
+                try {
+                    val csv = withContext(Dispatchers.IO) {
+                        LocalProjectStore.exportMetricsCsv(context, id)
+                    }
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
+                            ?: error("Could not open the selected destination")
+                    }
+                    message = "Reviewed match metrics CSV exported."
+                } catch (error: Exception) {
+                    message = "Metrics export failed: " + (error.message ?: "unknown error")
+                }
+            }
+        }
+    )
+
     val positionsCsvExporter = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv"),
         onResult = { uri ->
@@ -1159,7 +1180,11 @@ private fun LocalTennisVideoApp() {
                             color = AppMuted,
                             fontSize = 11.sp
                         )
-                        matchAnalytics?.let { MatchAnalyticsCard(it) }
+                        matchAnalytics?.let { analytics ->
+                            MatchAnalyticsCard(analytics) {
+                                metricsCsvExporter.launch("tennis-video-reviewed-match-metrics.csv")
+                            }
+                        }
                         for (index in 0 until latestPlayers.length()) {
                             val player = latestPlayers.optJSONObject(index) ?: continue
                             if (!player.has("court_x_m")) continue
@@ -1509,7 +1534,7 @@ private fun VideoPlaybackCard(
 }
 
 @Composable
-private fun MatchAnalyticsCard(analytics: TennisMatchAnalytics) {
+private fun MatchAnalyticsCard(analytics: TennisMatchAnalytics, onExportMetrics: () -> Unit) {
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF7FAFD))
@@ -1590,6 +1615,10 @@ private fun MatchAnalyticsCard(analytics: TennisMatchAnalytics) {
                 color = AppMuted,
                 fontSize = 11.sp
             )
+            OutlinedButton(
+                onClick = onExportMetrics,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Export reviewed match metrics as CSV") }
         }
     }
 }
