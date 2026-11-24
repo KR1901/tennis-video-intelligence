@@ -367,6 +367,15 @@ internal object LocalProjectStore {
     fun appendEventCandidates(context: Context, id: String, additions: List<JSONObject>) {
         update(context, id) { project ->
             val events = project.optJSONArray("events") ?: JSONArray()
+            val cornersJson = project.optJSONArray("court_corners") ?: JSONArray()
+            val corners = if (cornersJson.length() == 4) {
+                (0 until 4).mapNotNull { index ->
+                    val point = cornersJson.optJSONObject(index) ?: return@mapNotNull null
+                    point.optDouble("x").toFloat() to point.optDouble("y").toFloat()
+                }.takeIf { it.size == 4 }
+            } else {
+                null
+            }
             val knownIds = HashSet<String>()
             for (index in 0 until events.length()) {
                 knownIds.add(events.optJSONObject(index)?.optString("event_id") ?: "")
@@ -374,6 +383,16 @@ internal object LocalProjectStore {
             additions.forEach { event ->
                 val eventId = event.optString("event_id")
                 if (eventId.isNotBlank() && eventId !in knownIds) {
+                    if (corners != null) {
+                        val imageX = event.optDouble("image_x", event.optDouble("ball_x", Double.NaN))
+                        val imageY = event.optDouble("image_y", event.optDouble("ball_y", Double.NaN))
+                        if (imageX.isFinite() && imageY.isFinite()) {
+                            applyMeasurement(
+                                event,
+                                CourtProjector.project(corners, imageX.toFloat(), imageY.toFloat())
+                            )
+                        }
+                    }
                     events.put(event)
                     knownIds.add(eventId)
                 }
