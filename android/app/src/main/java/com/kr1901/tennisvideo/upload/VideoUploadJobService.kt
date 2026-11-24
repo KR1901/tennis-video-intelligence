@@ -24,14 +24,19 @@ class VideoUploadJobService : JobService() {
 
     override fun onStartJob(params: JobParameters): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return false
+        BackgroundUploadRuntimeState.userInitiatedJobRunning = true
 
         val extras: PersistableBundle = params.extras
-        val uri = params.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
-            ?: extras.getString(KEY_URI)?.let(Uri::parse)
-            ?: return false
+        val uri = extras.getString(KEY_URI)?.let(Uri::parse)
+            ?: run {
+                BackgroundUploadRuntimeState.userInitiatedJobRunning = false
+                UploadRuntimeStore.markFailed(this, "Selected video permission could not be restored.")
+                return false
+            }
 
         val connection = UploadRuntimeStore.connection(this)
         if (connection.baseUrl.isBlank()) {
+            BackgroundUploadRuntimeState.userInitiatedJobRunning = false
             UploadRuntimeStore.markFailed(this, "Backend URL is not configured.")
             return false
         }
@@ -89,6 +94,7 @@ class VideoUploadJobService : JobService() {
                 jobFinished(params, retry)
             } finally {
                 runningJobs.remove(params.jobId)
+                BackgroundUploadRuntimeState.userInitiatedJobRunning = false
             }
         }
         runningJobs[params.jobId] = job
@@ -97,6 +103,7 @@ class VideoUploadJobService : JobService() {
     }
 
     override fun onStopJob(params: JobParameters): Boolean {
+        BackgroundUploadRuntimeState.userInitiatedJobRunning = false
         runningJobs.remove(params.jobId)?.cancel()
         UploadRuntimeStore.markPaused(this)
         // The server has durable byte offsets, so the system may safely reschedule.
