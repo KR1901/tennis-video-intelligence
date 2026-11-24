@@ -120,10 +120,10 @@ internal object TennisMatchAnalytics {
 
         val accumulators = linkedMapOf("P1" to PlayerAccumulator("P1"), "P2" to PlayerAccumulator("P2"))
         var calibratedPlayerObservations = 0
-        samples.forEach { sample ->
+        samples.forEach sampleLoop@{ sample ->
             val players = sample.optJSONArray("players") ?: JSONArray()
             val sampleTimestamp = sample.optLong("timestamp_ms", -1L)
-            if (sampleTimestamp < 0L) return@forEach
+            if (sampleTimestamp < 0L) return@sampleLoop
             for (index in 0 until players.length()) {
                 val player = players.optJSONObject(index) ?: continue
                 val id = player.optString("player_id")
@@ -137,10 +137,10 @@ internal object TennisMatchAnalytics {
 
                 val playerEnd = player.optString("player_end").takeIf { it == "near" || it == "far" }
                     ?: if (y >= 0.0) "near" else "far"
-                locatedServeEvents.forEach { serve ->
-                    if (serve.playerEnd != playerEnd) return@forEach
+                locatedServeEvents.forEach serveLoop@{ serve ->
+                    if (serve.playerEnd != playerEnd) return@serveLoop
                     val deltaMs = abs(sampleTimestamp - serve.timestampMs)
-                    if (deltaMs > MAX_RETURN_POSITION_WINDOW_MS) return@forEach
+                    if (deltaMs > MAX_RETURN_POSITION_WINDOW_MS) return@serveLoop
                     val key = serve.eventId to id
                     val previous = nearestReturnObservation[key]
                     if (previous == null || deltaMs < previous.deltaMs) {
@@ -178,10 +178,10 @@ internal object TennisMatchAnalytics {
         }
 
         val returnAccumulators = HashMap<Pair<String, String>, ReturnAccumulator>()
-        locatedServeEvents.forEach { serve ->
+        locatedServeEvents.forEach serveLoop@{ serve ->
             val zone = serveZone(serve.x, serve.y)
-            listOf("P1", "P2").forEach { playerId ->
-                val nearest = nearestReturnObservation[serve.eventId to playerId] ?: return@forEach
+            listOf("P1", "P2").forEach playerLoop@{ playerId ->
+                val nearest = nearestReturnObservation[serve.eventId to playerId] ?: return@playerLoop
                 val key = playerId to zone
                 returnAccumulators.getOrPut(key) { ReturnAccumulator(playerId, zone) }
                     .add(nearest.signedBaselineDistanceMeters)
