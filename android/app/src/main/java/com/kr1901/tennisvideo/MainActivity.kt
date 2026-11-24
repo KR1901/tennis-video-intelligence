@@ -161,7 +161,8 @@ private fun TennisVideoApp() {
     )
 
     fun api(): VideoApi = VideoApi(apiBaseUrl, context.contentResolver)
-\n    fun refreshAnalysis() {
+
+    fun refreshAnalysis() {
         val id = analysisId ?: return
         scope.launch {
             busy = true
@@ -625,7 +626,7 @@ private fun TennisVideoApp() {
             }
 
 
-            if (analysisId != null) {
+            if (videoId != null) {
                 Card(shape = RoundedCornerShape(16.dp)) {
                     Column(
                         modifier = Modifier.padding(16.dp),
