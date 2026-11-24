@@ -45,7 +45,8 @@ class LocalAnalysisWorker(
                 projectId,
                 "failed",
                 0,
-                "Video metadata is incomplete."
+                "Video metadata is incomplete.",
+                expectedRunId = runId
             )
             return@withContext Result.failure()
         }
@@ -55,7 +56,8 @@ class LocalAnalysisWorker(
             applicationContext,
             projectId,
             "processing",
-            currentProgress
+            currentProgress,
+            expectedRunId = runId
         )
         setProgress(workDataOf(KEY_PROGRESS_PCT to currentProgress))
 
@@ -207,7 +209,8 @@ class LocalAnalysisWorker(
                 projectId,
                 "failed",
                 ((startMs * 100L) / durationMs).toInt(),
-                error.message ?: "On-device model inference failed."
+                error.message ?: "On-device model inference failed.",
+                expectedRunId = runId
             )
             return@withContext Result.failure()
         } finally {
@@ -221,7 +224,12 @@ class LocalAnalysisWorker(
             return@withContext Result.success()
         }
 
-        LocalProjectStore.appendSamples(applicationContext, projectId, additions)
+        LocalProjectStore.appendSamples(
+            applicationContext,
+            projectId,
+            additions,
+            expectedRunId = runId
+        )
         val recentSamples = LocalProjectStore.load(applicationContext, projectId)
             ?.optJSONArray("samples")
             ?.let { samples ->
@@ -245,7 +253,8 @@ class LocalAnalysisWorker(
                     .put("turn_angle_degrees", candidate.turnAngleDegrees)
                     .put("ball_x", candidate.ballX)
                     .put("ball_y", candidate.ballY)
-            }
+            },
+            expectedRunId = runId
         )
 
         val completed = nextStartMs >= durationMs
@@ -254,7 +263,8 @@ class LocalAnalysisWorker(
             applicationContext,
             projectId,
             if (completed) "completed" else "processing",
-            progress
+            progress,
+            expectedRunId = runId
         )
         setProgress(workDataOf(KEY_PROGRESS_PCT to progress))
 
