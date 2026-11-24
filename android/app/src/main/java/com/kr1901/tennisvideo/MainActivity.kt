@@ -59,7 +59,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
@@ -71,6 +74,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -108,6 +113,10 @@ private fun LocalTennisVideoApp() {
     var frameBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Choose a match video stored on this device to begin.") }
+    var directVideoUrl by remember { mutableStateOf("") }
+    var downloadWorkId by remember { mutableStateOf<UUID?>(null) }
+    var downloadStatus by remember { mutableStateOf("") }
+    var downloadPercent by remember { mutableStateOf(0f) }
     var timestampText by remember { mutableStateOf("0") }
     var frameTimestampMs by remember { mutableStateOf(0L) }
     var markPlayerPosition by remember { mutableStateOf(false) }
@@ -137,9 +146,72 @@ private fun LocalTennisVideoApp() {
     }
 
     LaunchedEffect(Unit) {
-        val lastId = context.getSharedPreferences("tvi_local_projects", Context.MODE_PRIVATE)
-            .getString("last_project_id", null)
+        val preferences = context.getSharedPreferences("tvi_local_projects", Context.MODE_PRIVATE)
+        val lastId = preferences.getString("last_project_id", null)
         if (!lastId.isNullOrBlank()) restoreProject(lastId)
+        val savedDownloadId = preferences.getString("active_download_work_id", null)
+        if (!savedDownloadId.isNullOrBlank()) {
+            downloadWorkId = runCatching { UUID.fromString(savedDownloadId) }.getOrNull()
+        }
+    }
+
+    LaunchedEffect(downloadWorkId) {
+        val workId = downloadWorkId ?: return@LaunchedEffect
+        val workManager = WorkManager.getInstance(context)
+        while (isActive) {
+            val info = withContext(Dispatchers.IO) {
+                runCatching { workManager.getWorkInfoById(workId).get() }.getOrNull()
+            }
+            if (info != null) {
+                val bytesDone = info.progress.getLong(DirectVideoDownloadWorker.KEY_BYTES_DONE, 0L)
+                val percent = info.progress.getInt(DirectVideoDownloadWorker.KEY_PERCENT, -1)
+                downloadPercent = if (percent >= 0) (percent / 100f).coerceIn(0f, 1f) else 0f
+                val total = info.progress.getLong(DirectVideoDownloadWorker.KEY_TOTAL_BYTES, -1L)
+                downloadStatus = if (total > 0L) {
+                    "Downloading " + formatBytes(bytesDone) + " of " + formatBytes(total) +
+                        " · " + (percent.coerceAtLeast(0)) + "%"
+                } else if (bytesDone > 0L) {
+                    "Downloaded " + formatBytes(bytesDone)
+                } else {
+                    "Waiting for a network connection..."
+                }
+
+                when (info.state) {
+                    androidx.work.WorkInfo.State.SUCCEEDED -> {
+                        val createdId = info.outputData.getString(DirectVideoDownloadWorker.KEY_PROJECT_ID)
+                        if (!createdId.isNullOrBlank()) {
+                            restoreProject(createdId)
+                            message = "Direct video downloaded and opened locally. No video was uploaded to a server."
+                        }
+                        downloadStatus = "Direct video import complete."
+                        context.getSharedPreferences("tvi_local_projects", Context.MODE_PRIVATE)
+                            .edit().remove("active_download_work_id").apply()
+                        downloadWorkId = null
+                        busy = false
+                        break
+                    }
+                    androidx.work.WorkInfo.State.FAILED,
+                    androidx.work.WorkInfo.State.CANCELLED -> {
+                        val error = info.outputData.getString(DirectVideoDownloadWorker.KEY_ERROR)
+                        downloadStatus = if (info.state == androidx.work.WorkInfo.State.CANCELLED) {
+                            "Direct video download cancelled."
+                        } else {
+                            "Direct video download failed."
+                        }
+                        message = error ?: downloadStatus
+                        context.getSharedPreferences("tvi_local_projects", Context.MODE_PRIVATE)
+                            .edit().remove("active_download_work_id").apply()
+                        downloadWorkId = null
+                        busy = false
+                        break
+                    }
+                    else -> {
+                        busy = true
+                    }
+                }
+            }
+            delay(1_000L)
+        }
     }
 
     val projectId = project?.optString("id")?.takeIf { it.isNotBlank() }
@@ -369,6 +441,76 @@ private fun LocalTennisVideoApp() {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Choose video from this device")
+                    }
+                    Divider()
+                    OutlinedTextField(
+                        value = directVideoUrl,
+                        onValueChange = { directVideoUrl = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Direct HTTPS video URL") },
+                        placeholder = { Text("https://example.com/match.mp4") },
+                        supportingText = {
+                            Text("Optional: imports a direct video-file link over HTTPS. This does not fetch YouTube/watch pages, playlists, DRM streams or subscription videos.")
+                        },
+                        singleLine = true,
+                        enabled = !busy
+                    )
+                    Button(
+                        onClick = {
+                            val parsed = runCatching { java.net.URI(directVideoUrl.trim()) }.getOrNull()
+                            if (parsed == null || !parsed.scheme.equals("https", ignoreCase = true) ||
+                                parsed.host.isNullOrBlank() || parsed.userInfo != null
+                            ) {
+                                message = "Enter a valid direct HTTPS video-file URL."
+                            } else {
+                                val constraints = Constraints.Builder()
+                                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                                    .build()
+                                val request = OneTimeWorkRequestBuilder<DirectVideoDownloadWorker>()
+                                    .setInputData(
+                                        workDataOf(DirectVideoDownloadWorker.KEY_URL to directVideoUrl.trim())
+                                    )
+                                    .setConstraints(constraints)
+                                    .setBackoffCriteria(
+                                        BackoffPolicy.EXPONENTIAL,
+                                        30L,
+                                        TimeUnit.SECONDS
+                                    )
+                                    .build()
+                                WorkManager.getInstance(context).enqueueUniqueWork(
+                                    "tvi-direct-video-" + request.id,
+                                    ExistingWorkPolicy.KEEP,
+                                    request
+                                )
+                                context.getSharedPreferences("tvi_local_projects", Context.MODE_PRIVATE)
+                                    .edit().putString("active_download_work_id", request.id.toString()).apply()
+                                downloadWorkId = request.id
+                                downloadPercent = 0f
+                                downloadStatus = "Waiting for a network connection..."
+                                busy = true
+                                message = "Direct HTTPS download queued. The file will be stored locally and analysed on this phone."
+                            }
+                        },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Download direct video link")
+                    }
+                    if (downloadWorkId != null) {
+                        LinearProgressIndicator(
+                            progress = { downloadPercent },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(downloadStatus, color = AppMuted, fontSize = 12.sp)
+                        OutlinedButton(
+                            onClick = {
+                                downloadWorkId?.let { WorkManager.getInstance(context).cancelWorkById(it) }
+                            },
+                            enabled = busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Cancel download")
+                        }
                     }
                     project?.let { item ->
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
