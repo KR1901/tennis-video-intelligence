@@ -169,7 +169,7 @@ def make_tracknet_onnx(weights_path: Path, output_path: Path) -> dict[str, objec
         export_model,
         dummy,
         str(output_path),
-        input_names=["three_rgb_frames_bgr_newest_first"],
+        input_names=["three_bgr_frames_current_previous_oldest"],
         output_names=["ball_class_heatmap"],
         opset_version=17,
         do_constant_folding=True,
@@ -211,8 +211,10 @@ def main() -> None:
         )
 
     weights_path = args.output / "tracknet_weights.pth"
-    tracknet_info = download(TRACKNET_WEIGHTS_URL, weights_path, 1_000_000, 250_000_000)
+    checkpoint_info = download(TRACKNET_WEIGHTS_URL, weights_path, 1_000_000, 250_000_000)
     tracknet_info = make_tracknet_onnx(weights_path, tracknet_path)
+    tracknet_info["checkpoint_size_bytes"] = checkpoint_info["size_bytes"]
+    tracknet_info["checkpoint_sha256"] = checkpoint_info["sha256"]
     weights_path.unlink(missing_ok=True)
 
     manifest = {
