@@ -284,7 +284,7 @@ internal object TennisMatchAnalytics {
         fun add(timestamp: Long, x: Double, y: Double, signedBaseline: Double) {
             observations++
             signedDistanceTotal += signedBaseline
-            if (signedBaseline >= 0.0) behind++
+            if (signedBaseline > 0.0) behind++
             val old = previous
             if (old != null) {
                 val deltaMs = timestamp - old.first
