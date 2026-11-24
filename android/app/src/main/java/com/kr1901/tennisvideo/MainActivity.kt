@@ -529,10 +529,8 @@ private fun LocalTennisVideoApp() {
                     )
                     Button(
                         onClick = {
-                            val parsed = runCatching { java.net.URI(directVideoUrl.trim()) }.getOrNull()
-                            if (parsed == null || !parsed.scheme.equals("https", ignoreCase = true) ||
-                                parsed.host.isNullOrBlank() || parsed.userInfo != null
-                            ) {
+                            val parsed = DirectVideoImportPolicy.parseAllowedHttpsUrl(directVideoUrl.trim())
+                            if (parsed == null) {
                                 message = "Enter a valid direct HTTPS video-file URL."
                             } else {
                                 val constraints = Constraints.Builder()
