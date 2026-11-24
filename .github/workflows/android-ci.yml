@@ -27,9 +27,17 @@ jobs:
           distribution: temurin
           java-version: "17"
       - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -mindepth 2 -maxdepth 2 -type f -name sdkmanager | sort | tail -n 1)"
+          yes | "$SDKMANAGER" --licenses
       - name: Install Android 36 SDK
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -mindepth 2 -maxdepth 2 -type f -name sdkmanager | sort | tail -n 1)"
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
       - name: Set up Gradle 9.6.0
         uses: gradle/actions/setup-gradle@v4
         with:
