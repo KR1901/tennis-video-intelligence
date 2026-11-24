@@ -42,11 +42,6 @@ from app.services.media_probe import (
     MediaProbeTimeoutError,
     probe_video_file,
 )
-from app.services.video_storage import (
-    LocalVideoStorage,
-    VideoTooLargeError,
-    VideoValidationError,
-)
 from app.services.resumable_uploads import (
     CHUNK_BYTES,
     ResumableVideoStorage,
@@ -55,6 +50,11 @@ from app.services.resumable_uploads import (
     UploadOffsetMismatch,
     UploadTooLarge,
     UploadValidationError,
+)
+from app.services.video_storage import (
+    LocalVideoStorage,
+    VideoTooLargeError,
+    VideoValidationError,
 )
 
 router = APIRouter(prefix="/videos", tags=["videos"])
