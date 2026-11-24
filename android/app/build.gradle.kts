@@ -88,6 +88,9 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.32.0")
 
     testImplementation("junit:junit:4.13.2")
+    // Use a real JVM JSON implementation in local unit tests; Android's mocked
+    // framework org.json stubs throw "not mocked" when instantiated.
+    testImplementation("org.json:json:20240303")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
