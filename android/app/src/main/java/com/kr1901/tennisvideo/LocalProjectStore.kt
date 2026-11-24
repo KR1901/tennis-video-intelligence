@@ -48,6 +48,10 @@ internal object LocalProjectStore {
             .put("mime_type", metadata.mimeType)
             .put("created_at_ms", System.currentTimeMillis())
             .put("analysis_status", "not_started")
+            .put("analysis_stage", "")
+            .put("analysis_frames_completed", 0)
+            .put("analysis_frames_total", 0)
+            .put("analysis_video_timestamp_ms", 0L)
             .put("progress_pct", 0)
             .put("samples", JSONArray())
             .put("sample_count", 0)
@@ -129,6 +133,10 @@ internal object LocalProjectStore {
             project.put("analysis_error", "")
             project.put("analysis_queued_at_ms", queuedAtMs)
             project.put("analysis_last_activity_ms", 0L)
+            project.put("analysis_stage", "Queued for Android")
+            project.put("analysis_frames_completed", 0)
+            project.put("analysis_frames_total", 0)
+            project.put("analysis_video_timestamp_ms", 0L)
             project.put("progress_pct", 0)
             project.put("samples", JSONArray())
             project.put("sample_count", 0)
@@ -180,6 +188,27 @@ internal object LocalProjectStore {
         project.put("sample_count", project.optInt("sample_count", 0) + accepted.size)
         project.put("last_sample_timestamp_ms", accepted.last().optLong("timestamp_ms"))
         save(context, project)
+    }
+
+    @Synchronized
+    fun updateAnalysisStage(
+        context: Context,
+        id: String,
+        expectedRunId: String,
+        stage: String,
+        framesCompleted: Int,
+        framesTotal: Int,
+        videoTimestampMs: Long
+    ): Boolean {
+        val project = load(context, id) ?: return false
+        if (project.optString("analysis_run_id") != expectedRunId) return false
+        project.put("analysis_stage", stage)
+        project.put("analysis_frames_completed", framesCompleted.coerceAtLeast(0))
+        project.put("analysis_frames_total", framesTotal.coerceAtLeast(0))
+        project.put("analysis_video_timestamp_ms", videoTimestampMs.coerceAtLeast(0L))
+        project.put("analysis_last_activity_ms", System.currentTimeMillis())
+        save(context, project)
+        return true
     }
 
     @Synchronized
