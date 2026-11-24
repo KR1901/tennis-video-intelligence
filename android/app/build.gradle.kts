@@ -22,8 +22,8 @@ android {
         applicationId = "com.kr1901.tennisvideo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.6.2"
+        versionCode = 9
+        versionName = "0.6.3"
     }
 
     signingConfigs {
