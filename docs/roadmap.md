@@ -12,6 +12,8 @@
 
 - [x] Probe media metadata with FFmpeg / ffprobe.
 - [x] Persist inspection output alongside the local video metadata.
+- [x] Extract a JPEG frame by timestamp for review.
+- [x] Persist manual court calibration and project selected image points into court coordinates.
 - [ ] Persist video and job metadata in PostgreSQL.
 - [ ] Add background job queue and retry-safe job states.
 - [ ] Add authentication, private object storage and retention controls.
@@ -19,9 +21,10 @@
 
 ## Milestone 2 — court and player positioning
 
-- [ ] Court-keypoint model and camera-segment detection.
 - [x] Homography estimation, image-to-court projection and signed baseline-distance utilities.
-- [ ] Calibration quality score, automatic keypoint pairing and manual correction.
+- [x] Manual court-corner selection endpoint.
+- [ ] Court-keypoint model and camera-segment detection.
+- [ ] Calibration quality score, automatic keypoint pairing and manual correction UI.
 - [ ] Player detection and tracking with identity review.
 - [ ] Ground-contact estimate and calibrated player coordinates.
 - [ ] Baseline distance in metres and positioning heatmaps.
