@@ -8,6 +8,7 @@ from app.main import app
 
 client = TestClient(app)
 
+
 def test_event_review_updates_only_confirmed_statistics(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
@@ -62,6 +63,7 @@ def test_event_review_updates_only_confirmed_statistics(tmp_path, monkeypatch) -
     assert reviewed["court_x_m"] == 2.1
     get_settings.cache_clear()
 
+
 def test_accepted_event_requires_explicit_label(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
@@ -84,6 +86,7 @@ def test_accepted_event_requires_explicit_label(tmp_path, monkeypatch) -> None:
 
     assert response.status_code == 422
     get_settings.cache_clear()
+
 
 def test_analysis_report_exports_svg(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
@@ -113,6 +116,7 @@ def test_analysis_report_exports_svg(tmp_path, monkeypatch) -> None:
     assert response.headers["content-type"].startswith("image/svg+xml")
     assert b"Tennis Video Intelligence" in response.content
     get_settings.cache_clear()
+
 
 def test_manual_event_creation_is_accepted_and_counted(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
@@ -147,6 +151,7 @@ def test_manual_event_creation_is_accepted_and_counted(tmp_path, monkeypatch) ->
     assert event["review_source"] == "human_manual_entry"
     assert response.json()["reviewed_metrics"]["shot_placement"]["confirmed_bounces"] == 1
     get_settings.cache_clear()
+
 
 def test_manual_event_creation_rejects_timestamp_past_video_duration(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
