@@ -121,9 +121,10 @@ internal object LocalProjectStore {
     }
 
     @Synchronized
-    fun prepareAnalysis(context: Context, id: String) {
+    fun prepareAnalysis(context: Context, id: String, runId: String) {
         val queuedAtMs = System.currentTimeMillis()
         update(context, id) { project ->
+            project.put("analysis_run_id", runId)
             project.put("analysis_status", "queued")
             project.put("analysis_error", "")
             project.put("analysis_queued_at_ms", queuedAtMs)
@@ -135,6 +136,14 @@ internal object LocalProjectStore {
             project.put("events", JSONArray())
         }
         sampleLogFile(context, id).delete()
+    }
+
+    @Synchronized
+    fun isCurrentAnalysisRun(context: Context, id: String, runId: String): Boolean {
+        val storedRunId = load(context, id)?.optString("analysis_run_id").orEmpty()
+        // Projects created before run IDs were introduced may finish their legacy run.
+        // Once a retry writes a new ID, any old worker is rejected.
+        return storedRunId.isBlank() || storedRunId == runId
     }
 
     /**
