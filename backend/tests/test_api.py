@@ -73,6 +73,7 @@ def test_upload_rejects_file_over_size_limit(tmp_path, monkeypatch) -> None:
     assert list(tmp_path.iterdir()) == []
     get_settings.cache_clear()
 
+
 def test_video_status_and_inspection_are_persisted(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
@@ -112,4 +113,3 @@ def test_video_status_and_inspection_are_persisted(tmp_path, monkeypatch) -> Non
 def test_video_status_returns_not_found_for_invalid_id() -> None:
     response = client.get("/api/v1/videos/not-a-uuid")
     assert response.status_code == 404
-
