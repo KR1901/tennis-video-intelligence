@@ -480,14 +480,14 @@ internal object LocalProjectStore {
         val log = sampleLogFile(context, id)
         if (log.isFile) {
             return log.useLines { lines ->
-                TennisMatchAnalytics.calculate(
+                TennisMatchAnalyticsCalculator.calculate(
                     lines.mapNotNull { line -> runCatching { JSONObject(line) }.getOrNull() },
                     events
                 )
             }
         }
         val samples = project.optJSONArray("samples") ?: JSONArray()
-        return TennisMatchAnalytics.calculate(
+        return TennisMatchAnalyticsCalculator.calculate(
             (0 until samples.length()).asSequence().mapNotNull { samples.optJSONObject(it) },
             events
         )
