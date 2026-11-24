@@ -53,6 +53,7 @@ def test_event_review_updates_only_confirmed_statistics(tmp_path, monkeypatch) -
 
     assert response.status_code == 200
     assert response.json()["reviewed_metrics"]["serve_placement"]["confirmed_serves"] == 1
+    assert response.json()["reviewed_metrics"]["shot_placement"]["confirmed_bounces"] == 0
 
     events = client.get(f"/api/v1/analyses/{analysis_id}/events")
     assert events.status_code == 200
@@ -115,3 +116,62 @@ def test_analysis_report_exports_svg(tmp_path, monkeypatch) -> None:
     assert response.headers["content-type"].startswith("image/svg+xml")
     assert b"Tennis Video Intelligence" in response.content
     get_settings.cache_clear()
+
+def test_manual_event_creation_is_accepted_and_counted(tmp_path, monkeypatch) -> None:
+    get_settings.cache_clear()
+    monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
+    analysis_id = str(uuid4())
+    events_dir = tmp_path / "analyses"
+    events_dir.mkdir()
+    job = {
+        "analysis_id": analysis_id,
+        "video_id": str(uuid4()),
+        "status": "completed",
+        "summary": {"source": {"duration_seconds": 120.0}},
+        "events": [],
+    }
+    (events_dir / f"{analysis_id}.json").write_text(json.dumps(job), encoding="utf-8")
+
+    response = client.post(
+        f"/api/v1/analyses/{analysis_id}/events",
+        json={
+            "timestamp_seconds": 12.5,
+            "event_type": "shot_bounce",
+            "court_x_m": 1.5,
+            "court_y_m": -4.0,
+            "player_id": "far_player",
+            "note": "Confirmed from the replay.",
+        },
+    )
+
+    assert response.status_code == 201
+    event = response.json()["event"]
+    assert event["review_status"] == "accepted"
+    assert event["review_source"] == "human_manual_entry"
+    assert response.json()["reviewed_metrics"]["shot_placement"]["confirmed_bounces"] == 1
+    get_settings.cache_clear()
+
+
+def test_manual_event_creation_rejects_timestamp_past_video_duration(tmp_path, monkeypatch) -> None:
+    get_settings.cache_clear()
+    monkeypatch.setenv("TVI_STORAGE_DIR", str(tmp_path))
+    analysis_id = str(uuid4())
+    events_dir = tmp_path / "analyses"
+    events_dir.mkdir()
+    job = {
+        "analysis_id": analysis_id,
+        "video_id": str(uuid4()),
+        "status": "completed",
+        "summary": {"source": {"duration_seconds": 10.0}},
+        "events": [],
+    }
+    (events_dir / f"{analysis_id}.json").write_text(json.dumps(job), encoding="utf-8")
+
+    response = client.post(
+        f"/api/v1/analyses/{analysis_id}/events",
+        json={"timestamp_seconds": 12.0, "event_type": "point_start"},
+    )
+
+    assert response.status_code == 422
+    get_settings.cache_clear()
+
