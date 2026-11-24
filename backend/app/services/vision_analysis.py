@@ -680,9 +680,7 @@ def calculate_reviewed_match_metrics(job: dict[str, Any]) -> dict[str, Any]:
         if isinstance(event, dict) and event.get("review_status") == "accepted"
     ]
     serves = [event for event in accepted if event.get("event_type") == "serve_bounce"]
-    shot_bounces = [
-        event for event in accepted if event.get("event_type") == "shot_bounce"
-    ]
+    shot_bounces = [event for event in accepted if event.get("event_type") == "shot_bounce"]
     contacts = [event for event in accepted if event.get("event_type") == "racket_contact"]
     point_starts = sorted(
         float(event["timestamp_seconds"])
