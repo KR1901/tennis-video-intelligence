@@ -1,4 +1,6 @@
 import html
+
+# ruff: noqa: E501
 from typing import Any
 
 from app.services.court_geometry import CourtDimensions
@@ -63,7 +65,7 @@ def render_analysis_svg(job: dict[str, Any]) -> str:
     far_avg = metric("far_player", "average_baseline_distance_m")
 
     lines = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1080" viewBox="0 0 900 1080">',
+        '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1080" viewBox="0 0 900 1080">',
         '<rect width="900" height="1080" fill="#f7f9f8"/>',
         '<text x="56" y="66" font-family="Arial" font-size="30" font-weight="700" fill="#142b24">Tennis Video Intelligence</text>',
         '<text x="56" y="98" font-family="Arial" font-size="14" fill="#5d7068">Match positioning report · court coordinates in metres</text>',
@@ -78,9 +80,9 @@ def render_analysis_svg(job: dict[str, Any]) -> str:
         f'<line x1="{court_left}" y1="{to_y(-6.4):.1f}" x2="{court_left + court_width}" y2="{to_y(-6.4):.1f}" stroke="#ffffff" stroke-width="1.3"/>',
         f'<line x1="{court_left}" y1="{court_top + court_height / 2:.1f}" x2="{court_left + court_width}" y2="{court_top + court_height / 2:.1f}" stroke="#ffffff" stroke-width="2"/>',
         '<text x="550" y="190" font-family="Arial" font-size="17" font-weight="700" fill="#142b24">Baseline positioning</text>',
-        f'<text x="550" y="236" font-family="Arial" font-size="14" fill="#5d7068">Near player average</text>',
+        '<text x="550" y="236" font-family="Arial" font-size="14" fill="#5d7068">Near player average</text>',
         f'<text x="550" y="268" font-family="Arial" font-size="26" font-weight="700" fill="#0E8A63">{near_avg} m</text>',
-        f'<text x="550" y="322" font-family="Arial" font-size="14" fill="#5d7068">Far player average</text>',
+        '<text x="550" y="322" font-family="Arial" font-size="14" fill="#5d7068">Far player average</text>',
         f'<text x="550" y="354" font-family="Arial" font-size="26" font-weight="700" fill="#0E8A63">{far_avg} m</text>',
         '<text x="550" y="420" font-family="Arial" font-size="12" fill="#5d7068">Positive = behind baseline</text>',
         '<text x="550" y="442" font-family="Arial" font-size="12" fill="#5d7068">Negative = inside court</text>',
