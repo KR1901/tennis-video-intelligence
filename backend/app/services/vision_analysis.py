@@ -17,7 +17,7 @@ from app.services.court_geometry import (
 )
 
 MAX_ANALYSIS_SAMPLES = 32_000
-DEFAULT_SAMPLE_INTERVAL = 1.0 / 3.0
+DEFAULT_SAMPLE_INTERVAL = 0.5
 MAX_ANALYSIS_WIDTH = 960
 
 
