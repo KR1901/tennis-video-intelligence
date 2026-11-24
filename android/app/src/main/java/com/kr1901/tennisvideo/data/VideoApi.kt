@@ -81,6 +81,66 @@ class VideoApi(
         }
     }
 
+
+    fun detectCourt(videoId: String, timestampSeconds: Double): JSONObject {
+        val timestamp = String.format(Locale.US, "%.3f", timestampSeconds)
+        return requestJson(
+            "/api/v1/videos/$videoId/court-detection?timestamp_seconds=$timestamp",
+            "POST"
+        )
+    }
+
+    fun startAnalysis(videoId: String, calibrationId: String?): JSONObject {
+        val payload = JSONObject()
+            .put("sample_interval_seconds", 0.333)
+            .put("max_samples", 32000)
+            .put("enable_ball_tracking", true)
+        if (!calibrationId.isNullOrBlank()) {
+            payload.put("calibration_id", calibrationId)
+        }
+        return postJson("/api/v1/videos/$videoId/analyses", payload)
+    }
+
+    fun getAnalysis(analysisId: String): JSONObject =
+        requestJson("/api/v1/analyses/$analysisId", "GET")
+
+    fun getAnalysisEvents(analysisId: String): JSONObject =
+        requestJson("/api/v1/analyses/$analysisId/events", "GET")
+
+    fun reviewEvent(
+        analysisId: String,
+        eventId: String,
+        eventType: String?,
+        accepted: Boolean,
+        note: String? = null
+    ): JSONObject {
+        val payload = JSONObject()
+            .put("review_status", if (accepted) "accepted" else "rejected")
+            .put("player_id", "unknown")
+        if (eventType != null) payload.put("event_type", eventType)
+        if (note != null) payload.put("note", note)
+        return postJson("/api/v1/analyses/$analysisId/events/$eventId/review", payload)
+    }
+
+    fun getAnalysisReportSvg(analysisId: String): ByteArray {
+        val connection = openConnection("/api/v1/analyses/$analysisId/report.svg", "GET")
+        connection.setRequestProperty("Accept", "image/svg+xml")
+        try {
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.use { it.readBytes() } ?: ByteArray(0)
+            if (code !in 200..299) {
+                val detail = runCatching {
+                    JSONObject(body.toString(Charsets.UTF_8)).optString("detail", body.toString(Charsets.UTF_8))
+                }.getOrDefault(body.toString(Charsets.UTF_8))
+                throw IOException("Server returned HTTP $code: $detail")
+            }
+            return body
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     fun createCalibration(
         videoId: String,
         timestampSeconds: Double,
