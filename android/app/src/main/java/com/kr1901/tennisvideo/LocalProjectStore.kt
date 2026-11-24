@@ -202,6 +202,22 @@ internal object LocalProjectStore {
             }
             project.put("manual_positions", manualPositions)
         }
+        val events = project.optJSONArray("events") ?: JSONArray()
+        for (index in 0 until events.length()) {
+            val event = events.optJSONObject(index) ?: continue
+            val imageX = event.optDouble("image_x", event.optDouble("ball_x", Double.NaN))
+            val imageY = event.optDouble("image_y", event.optDouble("ball_y", Double.NaN))
+            val measurement = if (
+                validCorners != null && imageX.isFinite() && imageY.isFinite()
+            ) {
+                CourtProjector.project(validCorners, imageX.toFloat(), imageY.toFloat())
+            } else {
+                null
+            }
+            applyMeasurement(event, measurement)
+        }
+        project.put("events", events)
+
         if (validCorners != null || points.isEmpty()) {
             val log = sampleLogFile(context, id)
             if (log.isFile) {
@@ -398,7 +414,9 @@ internal object LocalProjectStore {
         timestampMs: Long,
         eventType: String,
         note: String,
-        measurement: CourtPositionMeasurement? = null
+        measurement: CourtPositionMeasurement? = null,
+        imageX: Float? = null,
+        imageY: Float? = null
     ) {
         update(context, id) { project ->
             val events = project.optJSONArray("events") ?: JSONArray()
@@ -412,6 +430,10 @@ internal object LocalProjectStore {
                     .put("review_status", "accepted")
                     .put("note", note)
                     .apply {
+                        if (imageX != null && imageY != null) {
+                            put("image_x", imageX)
+                            put("image_y", imageY)
+                        }
                         if (measurement != null) {
                             put("court_x_m", measurement.xMeters)
                             put("court_y_m", measurement.yMeters)
@@ -422,6 +444,79 @@ internal object LocalProjectStore {
             )
             project.put("events", events)
         }
+    }
+
+    /**
+     * Computes review-backed metrics from the complete NDJSON timeline, not just
+     * the 600-row recent window kept in the project JSON for fast UI refreshes.
+     */
+    @Synchronized
+    fun calculateAnalytics(context: Context, id: String): TennisMatchAnalytics? {
+        val project = load(context, id) ?: return null
+        val events = project.optJSONArray("events") ?: JSONArray()
+        val log = sampleLogFile(context, id)
+        if (log.isFile) {
+            return log.useLines { lines ->
+                TennisMatchAnalytics.calculate(
+                    lines.mapNotNull { line -> runCatching { JSONObject(line) }.getOrNull() },
+                    events
+                )
+            }
+        }
+        val samples = project.optJSONArray("samples") ?: JSONArray()
+        return TennisMatchAnalytics.calculate(
+            (0 until samples.length()).asSequence().mapNotNull { samples.optJSONObject(it) },
+            events
+        )
+    }
+
+    /**
+     * Builds a bounded, whole-match report snapshot by evenly sampling the
+     * persistent NDJSON log. The full source log is never loaded into memory.
+     */
+    @Synchronized
+    fun loadReportSnapshot(
+        context: Context,
+        id: String,
+        maxSamples: Int = 1_800
+    ): JSONObject? {
+        val project = load(context, id) ?: return null
+        val log = sampleLogFile(context, id)
+        if (!log.isFile || maxSamples <= 0) return project
+
+        val expectedCount = project.optInt("sample_count", 0).coerceAtLeast(0)
+        if (expectedCount <= maxSamples) {
+            val complete = JSONArray()
+            log.forEachLine { line ->
+                runCatching { JSONObject(line) }.getOrNull()?.let(complete::put)
+            }
+            return JSONObject(project.toString()).put("samples", complete)
+        }
+
+        val stride = kotlin.math.ceil(expectedCount.toDouble() / maxSamples.toDouble())
+            .toInt().coerceAtLeast(1)
+        val selected = JSONArray()
+        var index = 0
+        var lastSample: JSONObject? = null
+        log.forEachLine { line ->
+            val sample = runCatching { JSONObject(line) }.getOrNull()
+            if (sample != null) {
+                lastSample = sample
+                if (index % stride == 0 && selected.length() < maxSamples) {
+                    selected.put(sample)
+                }
+                index++
+            }
+        }
+        if (lastSample != null) {
+            val lastTime = lastSample!!.optLong("timestamp_ms")
+            val alreadyLast = selected.length() > 0 &&
+                selected.optJSONObject(selected.length() - 1)?.optLong("timestamp_ms") == lastTime
+            if (!alreadyLast) selected.put(lastSample)
+        }
+        return JSONObject(project.toString())
+            .put("samples", selected)
+            .put("report_sample_count", index)
     }
 
     @Synchronized
@@ -453,15 +548,25 @@ internal object LocalProjectStore {
     @Synchronized
     fun exportEventsCsv(context: Context, id: String): String {
         val events = load(context, id)?.optJSONArray("events") ?: error("Project was not found")
-        val csv = StringBuilder("timestamp_ms,event_type,confidence,review_status,source,note\n")
+        val csv = StringBuilder(
+            "timestamp_ms,event_type,confidence,review_status,source,player_end,court_x_m,court_y_m,signed_baseline_distance_m,image_x,image_y,note\n"
+        )
+        fun field(value: String): String =
+            "\"" + value.replace("\"", "\"\"") + "\""
         for (index in 0 until events.length()) {
             val event = events.optJSONObject(index) ?: continue
             csv.append(event.optLong("timestamp_ms")).append(',')
-                .append(event.optString("event_type")).append(',')
+                .append(field(event.optString("event_type"))).append(',')
                 .append(event.optDouble("confidence")).append(',')
-                .append(event.optString("review_status")).append(',')
-                .append(event.optString("source")).append(',')
-                .append('"').append(event.optString("note").replace("\"", "\"\"")).append('"')
+                .append(field(event.optString("review_status"))).append(',')
+                .append(field(event.optString("source"))).append(',')
+                .append(field(event.optString("player_end"))).append(',')
+                .append(if (event.has("court_x_m")) event.optDouble("court_x_m") else "").append(',')
+                .append(if (event.has("court_y_m")) event.optDouble("court_y_m") else "").append(',')
+                .append(if (event.has("baseline_distance_m")) event.optDouble("baseline_distance_m") else "").append(',')
+                .append(if (event.has("image_x")) event.optDouble("image_x") else "").append(',')
+                .append(if (event.has("image_y")) event.optDouble("image_y") else "").append(',')
+                .append(field(event.optString("note")))
                 .append('\n')
         }
         return csv.toString()
