@@ -72,7 +72,7 @@ internal data class TennisMatchAnalytics(
  * or official match statistics. Event placement bins describe where a
  * user-confirmed event was marked on the calibrated court.
  */
-internal object TennisMatchAnalytics {
+internal object TennisMatchAnalyticsCalculator {
     private const val HALF_COURT_WIDTH_M = 5.485
     private const val HALF_COURT_LENGTH_M = 11.885
     private const val MAX_TRACK_GAP_MS = 2_000L
