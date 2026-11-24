@@ -9,6 +9,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from app.services.analysis_metrics import calculate_reviewed_match_metrics
 from app.services.court_geometry import (
     CourtDimensions,
     estimate_homography,
@@ -667,85 +668,3 @@ def run_analysis_job(
     }
     job["events"] = events
     _atomic_json_write(job_path, job)
-
-
-def calculate_reviewed_match_metrics(job: dict[str, Any]) -> dict[str, Any]:
-    """Calculate event-derived stats only from human-accepted, explicitly typed events."""
-    events = job.get("events", [])
-    if not isinstance(events, list):
-        events = []
-    accepted = [
-        event
-        for event in events
-        if isinstance(event, dict) and event.get("review_status") == "accepted"
-    ]
-    serves = [event for event in accepted if event.get("event_type") == "serve_bounce"]
-    shot_bounces = [event for event in accepted if event.get("event_type") == "shot_bounce"]
-    contacts = [event for event in accepted if event.get("event_type") == "racket_contact"]
-    point_starts = sorted(
-        float(event["timestamp_seconds"])
-        for event in accepted
-        if event.get("event_type") == "point_start"
-    )
-    point_ends = sorted(
-        float(event["timestamp_seconds"])
-        for event in accepted
-        if event.get("event_type") == "point_end"
-    )
-
-    rally_lengths: list[int] = []
-    for start in point_starts:
-        end = next((value for value in point_ends if value > start), None)
-        if end is not None:
-            rally_lengths.append(
-                sum(start <= float(event["timestamp_seconds"]) <= end for event in contacts)
-            )
-
-    def positions(items: list[dict[str, Any]]) -> list[dict[str, float]]:
-        return [
-            {"x_m": float(item["court_x_m"]), "y_m": float(item["court_y_m"])}
-            for item in items
-            if item.get("court_x_m") is not None and item.get("court_y_m") is not None
-        ]
-
-    serve_plus_one = [event for event in accepted if event.get("event_type") == "serve_plus_one"]
-    return_plus_one = [event for event in accepted if event.get("event_type") == "return_plus_one"]
-    winners = [event for event in accepted if event.get("event_type") == "winner"]
-    forced_errors = [event for event in accepted if event.get("event_type") == "forced_error"]
-    unforced_errors = [event for event in accepted if event.get("event_type") == "unforced_error"]
-
-    return {
-        "accepted_event_count": len(accepted),
-        "serve_placement": {
-            "confirmed_serves": len(serves),
-            "positions": positions(serves),
-            "status": "based_on_human_review",
-        },
-        "shot_placement": {
-            "confirmed_bounces": len(shot_bounces),
-            "positions": positions(shot_bounces),
-            "status": "based_on_human_review",
-        },
-        "rally_length": {
-            "completed_points": len(rally_lengths),
-            "contact_counts": rally_lengths,
-            "average_contacts_per_point": (
-                float(np.mean(rally_lengths)) if rally_lengths else None
-            ),
-            "status": "requires_reviewed_point_and_contact_labels",
-        },
-        "serve_plus_one": {
-            "reviewed_count": len(serve_plus_one),
-            "player_labels": [event.get("player_id", "unknown") for event in serve_plus_one],
-        },
-        "return_plus_one": {
-            "reviewed_count": len(return_plus_one),
-            "player_labels": [event.get("player_id", "unknown") for event in return_plus_one],
-        },
-        "winner_error_classification": {
-            "status": "based_on_human_review",
-            "winners": len(winners),
-            "forced_errors": len(forced_errors),
-            "unforced_errors": len(unforced_errors),
-        },
-    }
