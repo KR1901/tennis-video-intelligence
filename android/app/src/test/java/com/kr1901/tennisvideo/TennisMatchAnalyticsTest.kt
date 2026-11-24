@@ -42,6 +42,28 @@ class TennisMatchAnalyticsTest {
     }
 
     @Test
+    fun returnerPositionUsesClosestTrackOnServeTargetHalf() {
+        val events = JSONArray()
+            .put(event(1_000L, "serve", "accepted", 0.5, 9.0))
+        val samples = sequenceOf(
+            sample(
+                900L,
+                player("P1", 0.4, 10.0, -1.885),
+                player("P2", -0.5, -10.0, -1.885)
+            )
+        )
+
+        val result = TennisMatchAnalytics.calculate(samples, events)
+
+        assertEquals(1, result.returnPositions.size)
+        val returner = result.returnPositions.single()
+        assertEquals("P1", returner.playerId)
+        assertEquals("T", returner.serveZone)
+        assertEquals(1, returner.observations)
+        assertEquals(-1.885, returner.averageSignedBaselineDistanceMeters, 0.001)
+    }
+
+    @Test
     fun shotPlacementBinsDescribeCourtLocation() {
         val events = JSONArray()
             .put(event(100L, "forehand", "accepted", -3.0, 2.5))
@@ -117,6 +139,7 @@ class TennisMatchAnalyticsTest {
             if (x.isFinite() && y.isFinite()) {
                 put("court_x_m", x)
                 put("court_y_m", y)
+                put("player_end", if (y >= 0.0) "near" else "far")
             }
         }
 }
