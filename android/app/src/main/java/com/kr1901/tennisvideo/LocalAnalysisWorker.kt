@@ -179,7 +179,7 @@ class LocalAnalysisWorker(
                         olderFrame = previousFrame
                         previousFrame = frame
 
-                        timeMs += FRAME_INTERVAL_MS
+                        timeMs += frameIntervalMs
                         sampleIndex++
                     }
                 }
