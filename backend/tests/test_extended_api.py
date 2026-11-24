@@ -9,6 +9,7 @@ from app.main import app
 
 client = TestClient(app)
 
+
 def _video_file(tmp_path, suffix=".mp4"):
     video_id = str(uuid4())
     path = tmp_path / f"{video_id}{suffix}"
