@@ -55,6 +55,10 @@ android {
         buildConfig = true
     }
 
+    androidResources {
+        noCompress += listOf("task")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
