@@ -51,6 +51,28 @@ class AnalysisWorkRecoveryTest {
     }
 
     @Test
+    fun recentlyQueuedContinuationIsNotOfferedForRetry() {
+        assertFalse(
+            AnalysisWorkRecovery.shouldOfferRetry(
+                "processing", WorkInfo.State.ENQUEUED, true,
+                now - 30 * 60_000L, now - 30_000L, now
+            )
+        )
+    }
+
+    @Test
+    fun staleQueuedContinuationCanBeRetried() {
+        assertTrue(
+            AnalysisWorkRecovery.shouldOfferRetry(
+                "processing", WorkInfo.State.ENQUEUED, true,
+                now - 30 * 60_000L,
+                now - AnalysisWorkRecovery.QUEUED_TIMEOUT_MS - 1L,
+                now
+            )
+        )
+    }
+
+    @Test
     fun missingWorkCanBeRetried() {
         assertTrue(
             AnalysisWorkRecovery.shouldOfferRetry(
