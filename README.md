@@ -2,7 +2,7 @@
 
 An Android-first tennis video analysis prototype. The current client processes match videos on the phone and does not require a permanently hosted API server.
 
-> **Status: on-device analysis prototype.** This branch integrates generic two-person pose estimation (MediaPipe Pose Landmarker Lite), tennis-ball candidate inference (TrackNet V1), manually verified court calibration, court-plane projections, reviewable trajectory events, manual event/location correction, mini-court visualisation and local SVG/PNG/PDF/CSV reports. These components are not yet validated to generate official or decision-grade tennis statistics.
+> **Status: on-device analysis prototype.** This branch integrates generic two-person pose estimation (MediaPipe Pose Landmarker Lite), tennis-ball candidate inference (TrackNet V1), manually verified court calibration, court-plane projections, reviewable trajectory events, manual event/location correction, mini-court visualisation and local SVG/PNG/PDF/CSV reports. The reviewed-event placement summaries are deterministic descriptive bins over user-accepted labels, not automatic serve/shot recognition. Player movement remains sampled pose estimates; none of these metrics are validated as official or decision-grade tennis statistics.
 
 ## What the Android app supports
 
@@ -11,9 +11,10 @@ An Android-first tennis video analysis prototype. The current client processes m
 - Preview frames and save manual court-corner calibration. A green-region colour suggestion may help initial setup but must be checked.
 - Run background on-device pose/ball inference in bounded WorkManager chunks.
 - Project player feet and ball candidate points into court metres after a valid four-corner calibration.
-- Review event candidates, relabel/accept/reject them, and manually enter timestamped serve/shot/event locations.
+- Review event candidates with an independent label editor per candidate; accept/reject/relabel them without one candidate changing another. Manually enter timestamped serve/shot/event locations.
 - Inspect a mini-court with recent player trails, density dots and ball candidates.
-- Export the sample timeline, event review and manual positions as CSV, plus SVG/PNG/PDF court reports.
+- Calculate review-backed player baseline summaries, manually reviewed serve T/body/wide placement, shot depth/direction bins and rallies between explicit point-start/end markers. Unreviewed events are excluded.
+- Export the full sampled timeline, event review and manual positions as CSV, plus a reviewed match-metrics CSV and SVG/PNG/PDF court reports.
 
 See the [Android guide](android/README.md), [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md).
 
