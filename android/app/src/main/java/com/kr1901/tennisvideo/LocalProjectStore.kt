@@ -171,10 +171,15 @@ internal object LocalProjectStore {
     }
 
     @Synchronized
-    fun lastPlayerTracks(context: Context, id: String): List<PlayerTrackState> {
+    fun lastPlayerTracks(
+        context: Context,
+        id: String,
+        beforeTimestampMs: Long = Long.MAX_VALUE
+    ): List<PlayerTrackState> {
         val samples = load(context, id)?.optJSONArray("samples") ?: return emptyList()
         for (index in samples.length() - 1 downTo 0) {
             val sample = samples.optJSONObject(index) ?: continue
+            if (sample.optLong("timestamp_ms", Long.MAX_VALUE) >= beforeTimestampMs) continue
             val players = sample.optJSONArray("players") ?: continue
             val tracks = ArrayList<PlayerTrackState>()
             for (playerIndex in 0 until players.length()) {
