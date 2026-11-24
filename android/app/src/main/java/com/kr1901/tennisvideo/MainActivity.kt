@@ -118,9 +118,7 @@ private fun GlassCard(
         shadowElevation = 0.dp
     ) {
         Column(
-            modifier = Modifier
-                .background(glassFill, shape)
-                .padding(16.dp),
+            modifier = Modifier.background(glassFill, shape),
             content = content
         )
     }
@@ -134,7 +132,7 @@ private fun formatBytes(bytes: Long): String {
         value /= 1024.0
         unit += 1
     }
-    return if (unit == 0) "$bytes \${units[unit]}" else String.format(Locale.US, "%.1f %s", value, units[unit])
+    return if (unit == 0) bytes.toString() + " " + units[unit] else String.format(Locale.US, "%.1f %s", value, units[unit])
 }
 
 class MainActivity : ComponentActivity() {
@@ -572,7 +570,7 @@ private fun TennisVideoApp() {
             }
 
             if (videoId != null) {
-                Card(shape = RoundedCornerShape(16.dp)) {
+                GlassCard(shape = RoundedCornerShape(16.dp)) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -686,7 +684,7 @@ private fun TennisVideoApp() {
                 }
 
                 if (frameBitmap != null) {
-                    Card(shape = RoundedCornerShape(16.dp)) {
+                    GlassCard(shape = RoundedCornerShape(16.dp)) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -839,7 +837,7 @@ private fun TennisVideoApp() {
 
 
             if (videoId != null) {
-                Card(shape = RoundedCornerShape(16.dp)) {
+                GlassCard(shape = RoundedCornerShape(16.dp)) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1031,7 +1029,7 @@ private fun TennisVideoApp() {
             }
 
             if (analysisId != null && analysisStatus == "completed") {
-                Card(shape = RoundedCornerShape(16.dp)) {
+                GlassCard(shape = RoundedCornerShape(16.dp)) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1046,7 +1044,7 @@ private fun TennisVideoApp() {
                             Text("No trajectory-change candidates were detected in this video.", color = Muted, fontSize = 12.sp)
                         }
                         eventCandidates.take(12).forEach { event ->
-                            Card(shape = RoundedCornerShape(10.dp)) {
+                            GlassCard(shape = RoundedCornerShape(10.dp)) {
                                 Column(
                                     modifier = Modifier.padding(10.dp),
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -1104,7 +1102,7 @@ private fun TennisVideoApp() {
             }
 
             if (analysisId != null && analysisStatus == "completed") {
-                Card(shape = RoundedCornerShape(16.dp)) {
+                GlassCard(shape = RoundedCornerShape(16.dp)) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1202,7 +1200,7 @@ private fun TennisVideoApp() {
                 }
             }
 
-            Card(shape = RoundedCornerShape(16.dp)) {
+            GlassCard(shape = RoundedCornerShape(16.dp)) {
                 Row(
                     modifier = Modifier.padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1229,7 +1227,7 @@ private fun TennisVideoApp() {
 
 @Composable
 private fun PlayerMetric(title: String, player: JSONObject) {
-    Card(modifier = Modifier.width(155.dp), shape = RoundedCornerShape(12.dp)) {
+    GlassCard(modifier = Modifier.width(155.dp), shape = RoundedCornerShape(12.dp)) {
         Column(
             modifier = Modifier.padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
