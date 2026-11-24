@@ -57,7 +57,7 @@ These measurements depend on correctly paired corners and a stable camera view. 
 
 ## On-device analysis
 
-The WorkManager pipeline processes bounded five-second chunks at a five-frames-per-second sampling grid:
+The WorkManager pipeline processes bounded five-second chunks. Choose one of three sampling rates before starting: quick 2.5 fps (400 ms), balanced 5 fps (200 ms, default), or detailed 10 fps (100 ms). The choice is carried through every background continuation. Detailed mode runs more TrackNet inference and will take longer and use more battery/thermal headroom:
 
 - **Player poses:** MediaPipe Pose Landmarker Lite is asked for up to two visible people. Foot/ankle points and wrist visibility are recorded. A short-term nearest-foot-point association assigns temporary P1/P2 labels; this is not a verified identity tracker and can swap during occlusion or camera cuts. Pose is sampled on alternate frames (about 2.5 observations per second).
 - **Tennis ball:** TrackNet V1 is run on three consecutive frames to generate a tennis-ball probability heatmap and a candidate ball point. This is a model proposal, not a continuously validated track; fast motion, low resolution, camera changes and occlusion can cause misses or false detections.
@@ -89,7 +89,7 @@ Original videos selected from the phone remain in their original location. Direc
 
 The match metrics card uses the full saved sample log to summarise calibrated P1/P2 observations: observation count, percentage behind the baseline, mean signed baseline distance and sampled path length. Movement is summed only across short temporal gaps and plausible single-step displacements; camera movement and P1/P2 identity swaps can still bias it.
 
-Serve placement bins (T/body/wide/outside service box) and shot placement bins (short/mid-court/deep; left/centre/right) count only accepted, manually reviewed event labels that have court coordinates. Rally duration and reviewed stroke counts require accepted point_start and point_end markers plus manually accepted stroke labels. The app exports these tables to CSV. Direction labels refer to the calibrated court x-axis, not necessarily the player's facing direction. These are descriptive summaries of reviewed annotations, not automatic match-stat recognition.
+Serve placement bins (T/body/wide/outside service box) and shot placement bins (short/mid-court/deep; left/centre/right) count only accepted, manually reviewed event labels that have court coordinates. Returner-position summaries use the nearest calibrated pose on the serve target half within 1.2 seconds of an accepted serve-location marker. Rally duration and reviewed stroke counts require accepted point_start and point_end markers plus manually accepted stroke labels. The app exports these tables to CSV. Direction labels refer to the calibrated court x-axis, not necessarily the player's facing direction. These are descriptive summaries of reviewed annotations, not automatic match-stat recognition. Return-position estimates are especially sensitive to P1/P2 identity swaps, camera cuts, pose misses and an incorrectly timed or located serve marker.
 
 ## Accuracy and current limitations
 
