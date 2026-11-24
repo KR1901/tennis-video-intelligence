@@ -27,14 +27,16 @@ class TennisMatchAnalyticsTest {
     @Test
     fun servePlacementBinsCountOnlyAcceptedLocatedServeEvents() {
         val events = JSONArray()
-            .put(event(100L, "serve", "accepted", 0.5, 9.0))
-            .put(event(200L, "serve", "accepted", 2.0, -9.0))
-            .put(event(300L, "serve", "accepted", 3.5, 9.0))
-            .put(event(400L, "serve", "needs_review", 0.5, 9.0))
+            .put(event(100L, "serve", "accepted", 0.5, 3.0))
+            .put(event(200L, "serve", "accepted", 2.0, -3.0))
+            .put(event(300L, "serve", "accepted", 3.5, 3.0))
+            .put(event(350L, "serve", "accepted", 0.5, 9.0))
+            .put(event(400L, "serve", "needs_review", 0.5, 3.0))
 
         val result = TennisMatchAnalyticsCalculator.calculate(emptySequence(), events)
 
-        assertEquals(3, result.serveZones.total)
+        assertEquals(4, result.serveZones.total)
+        assertEquals(1, result.serveZones.counts["Outside service box"])
         assertEquals(1, result.serveZones.counts["T"])
         assertEquals(1, result.serveZones.counts["Body"])
         assertEquals(1, result.serveZones.counts["Wide"])
@@ -44,7 +46,7 @@ class TennisMatchAnalyticsTest {
     @Test
     fun returnerPositionUsesClosestTrackOnServeTargetHalf() {
         val events = JSONArray()
-            .put(event(1_000L, "serve", "accepted", 0.5, 9.0))
+            .put(event(1_000L, "serve", "accepted", 0.5, 3.0))
         val samples = sequenceOf(
             sample(
                 900L,
