@@ -117,7 +117,7 @@ class VideoApi(
                         val permanentClientError = listOf(400, 401, 403, 404, 413, 415, 422)
                             .any { error.message?.contains("HTTP $it") == true }
                         if (permanentClientError || attempt >= MAX_CHUNK_RETRIES) throw error
-                        Thread.sleep(500L shl attempt)
+                        Thread.sleep((attempt + 1) * 500L)
                         attempt += 1
                     }
                 }
