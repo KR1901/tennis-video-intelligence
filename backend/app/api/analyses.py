@@ -15,11 +15,11 @@ from app.schemas.analysis import (
     EventReviewRequest,
     ManualEventCreateRequest,
 )
+from app.services.analysis_metrics import calculate_reviewed_match_metrics
 from app.services.frame_extract import extract_video_frame
 from app.services.report_export import render_analysis_svg
 from app.services.report_raster import render_analysis_pdf, render_analysis_png
 from app.services.vision_analysis import (
-    calculate_reviewed_match_metrics,
     detect_court_candidate,
     run_analysis_job,
 )
