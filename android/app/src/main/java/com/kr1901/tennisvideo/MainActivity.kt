@@ -1887,12 +1887,14 @@ private fun formatBytes(bytes: Long): String {
 private fun enqueueLocalAnalysis(context: Context, projectId: String, frameIntervalMs: Long) {
     val workManager = WorkManager.getInstance(context)
     workManager.cancelAllWorkByTag(LocalAnalysisWorker.tag(projectId)).result.get()
-    LocalProjectStore.prepareAnalysis(context, projectId)
+    val runId = UUID.randomUUID().toString()
+    LocalProjectStore.prepareAnalysis(context, projectId, runId)
 
     val request = OneTimeWorkRequestBuilder<LocalAnalysisWorker>()
         .setInputData(
             workDataOf(
                 LocalAnalysisWorker.KEY_PROJECT_ID to projectId,
+                LocalAnalysisWorker.KEY_RUN_ID to runId,
                 LocalAnalysisWorker.KEY_START_MS to 0L,
                 LocalAnalysisWorker.KEY_FRAME_INTERVAL_MS to frameIntervalMs
             )
@@ -1902,7 +1904,7 @@ private fun enqueueLocalAnalysis(context: Context, projectId: String, frameInter
         .build()
 
     workManager.enqueueUniqueWork(
-        LocalAnalysisWorker.workName(projectId, 0L),
+        LocalAnalysisWorker.workName(projectId, runId, 0L),
         ExistingWorkPolicy.REPLACE,
         request
     ).result.get()
