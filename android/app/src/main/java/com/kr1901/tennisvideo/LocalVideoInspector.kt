@@ -1,6 +1,7 @@
 package com.kr1901.tennisvideo
 
 import android.content.Context
+import android.os.Build
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -49,10 +50,20 @@ internal object LocalVideoInspector {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, uri)
-            retriever.getFrameAtTime(
-                timeMs.coerceAtLeast(0L) * 1000L,
-                MediaMetadataRetriever.OPTION_CLOSEST
-            )
+            val timeUs = timeMs.coerceAtLeast(0L) * 1000L
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                retriever.getScaledFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST, 1280, 720)
+            } else {
+                val original = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                if (original != null && original.width > 1280) {
+                    val scaledHeight = (original.height * 1280f / original.width).toInt().coerceAtLeast(1)
+                    val scaled = android.graphics.Bitmap.createScaledBitmap(original, 1280, scaledHeight, true)
+                    original.recycle()
+                    scaled
+                } else {
+                    original
+                }
+            }
         } finally {
             retriever.release()
         }
