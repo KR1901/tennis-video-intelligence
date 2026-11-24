@@ -21,9 +21,15 @@ def test_first_second_serve_and_serve_zone_statistics() -> None:
         "events": [
             _event("s1", 1.0, "serve_attempt", serve_number=1, serve_result="fault"),
             _event("s2", 2.0, "serve_attempt", serve_number=2, serve_result="in"),
-            _event("b2", 2.1, "serve_bounce", court_x_m=0.5, court_y_m=5.0, serve_number=2, serve_result="in"),
+            _event(
+                "b2", 2.1, "serve_bounce", court_x_m=0.5, court_y_m=5.0,
+                serve_number=2, serve_result="in",
+            ),
             _event("s3", 3.0, "serve_attempt", serve_number=1, serve_result="ace"),
-            _event("b3", 3.1, "serve_bounce", court_x_m=3.3, court_y_m=-4.0, serve_number=1, serve_result="ace"),
+            _event(
+                "b3", 3.1, "serve_bounce", court_x_m=3.3, court_y_m=-4.0,
+                serve_number=1, serve_result="ace",
+            ),
         ]
     }
     metrics = calculate_reviewed_match_metrics(job)
@@ -66,8 +72,12 @@ def test_raster_and_pdf_reports_are_valid_outputs() -> None:
         "completed_at": "2026-11-24T00:00:00+00:00",
         "summary": {
             "players": {
-                "near_player": {"average_baseline_distance_m": 1.2, "samples": 10, "coverage_pct": 60},
-                "far_player": {"average_baseline_distance_m": -0.7, "samples": 8, "coverage_pct": 50},
+                "near_player": {
+                    "average_baseline_distance_m": 1.2, "samples": 10, "coverage_pct": 60
+                },
+                "far_player": {
+                    "average_baseline_distance_m": -0.7, "samples": 8, "coverage_pct": 50
+                },
             },
             "position_heatmaps": {
                 "near_player": [[0, 1], [2, 0]],
@@ -75,7 +85,10 @@ def test_raster_and_pdf_reports_are_valid_outputs() -> None:
             },
         },
         "events": [
-            _event("serve", 1.0, "serve_bounce", serve_number=1, serve_result="in", court_x_m=0.2, court_y_m=4.0)
+            _event(
+                "serve", 1.0, "serve_bounce", serve_number=1,
+                serve_result="in", court_x_m=0.2, court_y_m=4.0,
+            )
         ],
     }
     png = render_analysis_png(job)
