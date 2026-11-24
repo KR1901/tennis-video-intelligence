@@ -106,6 +106,8 @@ private fun LocalTennisVideoApp() {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Choose a match video stored on this device to begin.") }
     var timestampText by remember { mutableStateOf("0") }
+    var frameTimestampMs by remember { mutableStateOf(0L) }
+    var markPlayerPosition by remember { mutableStateOf(false) }
     val courtCorners = remember { mutableStateListOf<Pair<Float, Float>>() }
 
     suspend fun restoreProject(id: String) {
@@ -116,6 +118,8 @@ private fun LocalTennisVideoApp() {
             frameBitmap = withContext(Dispatchers.IO) {
                 LocalVideoInspector.frameAt(context, uri, 0L)
             }
+            frameTimestampMs = 0L
+            markPlayerPosition = false
             courtCorners.clear()
             val storedCorners = saved.optJSONArray("court_corners") ?: JSONArray()
             for (index in 0 until storedCorners.length()) {
@@ -207,8 +211,38 @@ private fun LocalTennisVideoApp() {
         }
     )
 
+    val positionsCsvExporter = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+        onResult = { uri ->
+            val id = projectId
+            if (uri != null && id != null) {
+                scope.launch {
+                    try {
+                        val csv = withContext(Dispatchers.IO) {
+                            LocalProjectStore.exportPositionsCsv(context, id)
+                        }
+                        withContext(Dispatchers.IO) {
+                            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
+                                ?: error("Could not open the selected destination")
+                        }
+                        message = "Manual court-position CSV exported."
+                    } catch (error: Exception) {
+                        message = "Position export failed: " + (error.message ?: "unknown error")
+                    }
+                }
+            }
+        }
+    )
+
     val sampleArray = project?.optJSONArray("samples") ?: JSONArray()
     val sampleCount = sampleArray.length()
+    val manualPositionArray = project?.optJSONArray("manual_positions") ?: JSONArray()
+    val manualPositionCount = manualPositionArray.length()
+    val latestManualPosition = if (manualPositionCount > 0) {
+        manualPositionArray.optJSONObject(manualPositionCount - 1)
+    } else {
+        null
+    }
     var greenTotal = 0.0
     var motionTotal = 0.0
     var greenCount = 0
@@ -323,11 +357,11 @@ private fun LocalTennisVideoApp() {
                                 Canvas(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .pointerInput(projectId, courtCorners.size) {
+                                        .pointerInput(projectId, courtCorners.size, markPlayerPosition) {
                                             detectTapGestures { offset ->
+                                                val x = (offset.x / size.width).coerceIn(0f, 1f)
+                                                val y = (offset.y / size.height).coerceIn(0f, 1f)
                                                 if (courtCorners.size < 4) {
-                                                    val x = (offset.x / size.width).coerceIn(0f, 1f)
-                                                    val y = (offset.y / size.height).coerceIn(0f, 1f)
                                                     courtCorners.add(x to y)
                                                     val id = projectId
                                                     if (id != null) {
@@ -337,6 +371,34 @@ private fun LocalTennisVideoApp() {
                                                                 LocalProjectStore.setCourtCorners(context, id, points)
                                                             }
                                                             message = "Court corner " + points.size + " saved locally."
+                                                        }
+                                                    }
+                                                } else if (markPlayerPosition) {
+                                                    val id = projectId
+                                                    val measurement = CourtProjector.project(courtCorners.toList(), x, y)
+                                                    if (id == null || measurement == null) {
+                                                        message = "This point could not be projected. Check that the four court corners are distinct and correctly ordered."
+                                                    } else {
+                                                        val timestamp = frameTimestampMs
+                                                        markPlayerPosition = false
+                                                        scope.launch {
+                                                            withContext(Dispatchers.IO) {
+                                                                LocalProjectStore.addManualPosition(
+                                                                    context,
+                                                                    id,
+                                                                    timestamp,
+                                                                    x,
+                                                                    y,
+                                                                    measurement
+                                                                )
+                                                            }
+                                                            project = withContext(Dispatchers.IO) {
+                                                                LocalProjectStore.load(context, id)
+                                                            }
+                                                            message = "Saved " + measurement.playerEnd +
+                                                                "-side position: " +
+                                                                String.format(Locale.US, "x %.2f m, y %.2f m; baseline distance %.2f m", measurement.xMeters, measurement.yMeters, measurement.baselineDistanceMeters) +
+                                                                ". Positive means behind the baseline; negative means inside the court."
                                                         }
                                                     }
                                                 }
@@ -354,7 +416,8 @@ private fun LocalTennisVideoApp() {
                                 }
                             }
                             Text(
-                                "Frame preview. Tap the four outer court corners in order: far-left, far-right, near-right, near-left. These points are saved locally; court mapping is not yet applied to the motion samples.",
+                                "Frame preview at " + formatDuration(frameTimestampMs) +
+                                    ". Tap the four outer court corners in order: far-left, far-right, near-right, near-left. These points are saved locally.",
                                 color = AppMuted,
                                 fontSize = 12.sp
                             )
@@ -377,13 +440,15 @@ private fun LocalTennisVideoApp() {
                                         val timeMs = (seconds * 1000.0).toLong().coerceAtMost(durationMs)
                                         busy = true
                                         try {
-                                            frameBitmap = withContext(Dispatchers.IO) {
+                                            val preview = withContext(Dispatchers.IO) {
                                                 LocalVideoInspector.frameAt(
                                                     context,
                                                     Uri.parse(item.optString("content_uri")),
                                                     timeMs
                                                 )
                                             }
+                                            frameBitmap = preview
+                                            if (preview != null) frameTimestampMs = timeMs
                                             message = "Frame preview updated."
                                         } catch (error: Exception) {
                                             message = "Frame extraction failed: " + (error.message ?: "unknown error")
@@ -402,14 +467,54 @@ private fun LocalTennisVideoApp() {
                                     if (id != null) scope.launch {
                                         withContext(Dispatchers.IO) {
                                             LocalProjectStore.setCourtCorners(context, id, emptyList())
-                                        }
-                                        message = "Court corner selection cleared."
+                                            LocalProjectStore.load(context, id)
+                                        }.also { project = it }
+                                        markPlayerPosition = false
+                                        message = "Court corners and measurements cleared."
                                     }
                                 },
                                 modifier = Modifier.weight(1f)
                             ) { Text("Clear corners") }
                         }
                         Text("Saved court corners: " + courtCorners.size + " / 4", color = AppMuted, fontSize = 12.sp)
+                        if (courtCorners.size == 4) {
+                            OutlinedButton(
+                                onClick = { markPlayerPosition = !markPlayerPosition },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (markPlayerPosition) "Cancel player-point tap" else "Mark player foot on this frame")
+                            }
+                            Text(
+                                if (markPlayerPosition) {
+                                    "Tap the midpoint between the player's feet / ground-contact point. The point will be projected into court metres."
+                                } else {
+                                    "After calibration, you can manually tap a player's ground point on the current frame."
+                                },
+                                color = if (markPlayerPosition) TennisGreen else AppMuted,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Text("Saved manual positions: " + manualPositionCount, color = AppMuted, fontSize = 12.sp)
+                        latestManualPosition?.let { position ->
+                            val signedDistance = position.optDouble("baseline_distance_m")
+                            Text(
+                                "Latest: " + position.optString("player_end") +
+                                    " half · x " + String.format(Locale.US, "%.2f m", position.optDouble("court_x_m")) +
+                                    " · y " + String.format(Locale.US, "%.2f m", position.optDouble("court_y_m")) +
+                                    " · baseline " + String.format(Locale.US, "%+.2f m", signedDistance),
+                                color = AppInk,
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                if (signedDistance >= 0.0) "Player point is behind the baseline." else "Player point is inside the baseline.",
+                                color = AppMuted,
+                                fontSize = 11.sp
+                            )
+                            OutlinedButton(
+                                onClick = { positionsCsvExporter.launch("tennis-video-manual-positions.csv") },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Export manual court positions as CSV") }
+                        }
                     }
                 }
 
