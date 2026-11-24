@@ -73,7 +73,7 @@ jobs:
         if: steps.signing.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: tennis-video-intelligence-v0.2.0-release-signed
+          name: tennis-video-intelligence-v0.3.0-release-signed
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
@@ -82,7 +82,7 @@ jobs:
         if: steps.signing.outputs.configured != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: tennis-video-intelligence-v0.2.0-release-unsigned
+          name: tennis-video-intelligence-v0.3.0-release-unsigned
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
@@ -91,7 +91,7 @@ jobs:
         if: steps.signing.outputs.configured == 'true' && github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: v0.2.0
+          VERSION: v0.3.0
         run: |
           APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           gh release create "$VERSION" "$APK" \
