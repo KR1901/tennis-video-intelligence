@@ -1,9 +1,7 @@
 import json
-from pathlib import Path
 
 import cv2
 import numpy as np
-import pytest
 
 from app.services.vision_analysis import (
     calculate_reviewed_match_metrics,
@@ -135,5 +133,5 @@ def test_analysis_worker_persists_completed_job(tmp_path, monkeypatch) -> None:
     result = json.loads(job_path.read_text(encoding="utf-8"))
     assert result["status"] == "completed"
     assert result["progress_pct"] == 100
-    assert result["summary"]["source"]["sampled_frames"] == 4
+    assert result["summary"]["source"]["sampled_frames"] == 8
     assert result["summary"]["calibration"]["mode"] == "unavailable"
