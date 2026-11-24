@@ -44,13 +44,27 @@ internal class OnDevicePoseAnalyzer(context: Context) : AutoCloseable {
     }
 
     fun detect(bitmap: Bitmap, timestampMs: Long): List<PlayerPose> {
-        val image = BitmapImageBuilder(bitmap).build()
+        check(!bitmap.isRecycled) { "Pose analysis received a recycled video frame." }
+
+        // MediaPipe's BitmapImageContainer recycles the Bitmap when MPImage.close()
+        // releases its storage. Never wrap the worker's shared decoder frame directly:
+        // TrackNet and motion analysis still need that frame after pose inference.
+        val ownedBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+            ?: error("Unable to copy video frame for pose analysis.")
+        val image = try {
+            BitmapImageBuilder(ownedBitmap).build()
+        } catch (error: Throwable) {
+            if (!ownedBitmap.isRecycled) ownedBitmap.recycle()
+            throw error
+        }
+
         return try {
             val result = landmarker.detectForVideo(image, timestampMs)
             result.landmarks().mapNotNull { landmarks -> extractPlayerPose(landmarks) }
                 .sortedBy { it.footX }
                 .take(MAX_PLAYERS)
         } finally {
+            // This recycles only ownedBitmap; the caller retains its original frame.
             image.close()
         }
     }
