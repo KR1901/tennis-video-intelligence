@@ -7,7 +7,7 @@ import shutil
 import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import AsyncIterator, Any
+from typing import Any, AsyncIterator
 from uuid import UUID, uuid4
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
@@ -72,7 +72,7 @@ class ResumableVideoStorage:
         if size_bytes <= 0:
             raise UploadValidationError("The uploaded video must not be empty.")
         if size_bytes > self.max_upload_bytes:
-            raise UploadTooLarge("Upload exceeds the configured 10 GB limit.")
+            raise UploadTooLarge("Upload exceeds the configured maximum file size.")
 
         self.sessions.mkdir(parents=True, exist_ok=True)
         self.root.mkdir(parents=True, exist_ok=True)
