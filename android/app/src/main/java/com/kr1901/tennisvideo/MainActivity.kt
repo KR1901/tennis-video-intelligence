@@ -1248,6 +1248,7 @@ private fun TennisVideoApp() {
                 fontSize = 11.sp,
                 modifier = Modifier.padding(bottom = 20.dp)
             )
+            }
         }
     }
 }
