@@ -170,9 +170,6 @@ class LocalAnalysisWorker(
                 }
             }
         } catch (error: Exception) {
-            olderFrame?.recycle()
-            previousFrame?.recycle()
-            retriever.release()
             LocalProjectStore.updateProgress(
                 applicationContext,
                 projectId,
