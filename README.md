@@ -73,7 +73,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/videos" \\
   -F "file=@/path/to/your-match.mp4"
 ```
 
-The API checks the filename extension, declared content type and configured size cap, stores the file in the configured local storage directory and returns a video ID. It does not yet inspect the media container or prove that the bytes form a decodable video; that check belongs in the upcoming FFmpeg/ffprobe media-inspection stage. It does not claim that analysis has run. The current storage adapter is for local development; production storage, database persistence, background jobs and access controls are planned separately.
+The API checks the filename extension, declared content type and configured size cap, stores the file in the configured local storage directory and returns a video ID. Then call `POST /api/v1/videos/{video_id}/inspect` to use FFmpeg/ffprobe to inspect the media container and record available duration, resolution, frame rate, codec, rotation and file-size metadata. `GET /api/v1/videos/{video_id}` returns the stored status and inspection result. This is media inspection, not tennis analysis: player/ball tracking and match statistics have not yet been implemented. The current storage adapter is for local development; production storage, database persistence, background jobs and access controls are planned separately.
 
 ## Configuration
 
