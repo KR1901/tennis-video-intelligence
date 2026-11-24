@@ -457,6 +457,8 @@ private fun TennisVideoApp() {
                             }
                             FrameTapPreview(
                                 bitmap = bitmap,
+                                selectedPoints = calibrationPoints.toList(),
+                                selectedPlayerPoint = selectedPlayerPoint,
                                 onTap = { point ->
                                     if (calibrationId == null) {
                                         if (calibrationPoints.size < 4) {
@@ -919,6 +921,8 @@ private fun SectionHeading(number: String, title: String) {
 @Composable
 private fun FrameTapPreview(
     bitmap: Bitmap,
+    selectedPoints: List<Pair<Float, Float>>,
+    selectedPlayerPoint: Pair<Float, Float>?,
     onTap: (Pair<Float, Float>) -> Unit
 ) {
     Box(
@@ -956,5 +960,36 @@ private fun FrameTapPreview(
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
         )
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val scale = min(
+                size.width / bitmap.width.toFloat(),
+                size.height / bitmap.height.toFloat()
+            )
+            val imageWidth = bitmap.width * scale
+            val imageHeight = bitmap.height * scale
+            val left = (size.width - imageWidth) / 2f
+            val top = (size.height - imageHeight) / 2f
+
+            selectedPoints.forEach { point ->
+                val center = Offset(left + point.first * scale, top + point.second * scale)
+                drawCircle(CourtGreen, radius = 8.dp.toPx(), center = center)
+                drawCircle(
+                    Color.White,
+                    radius = 8.dp.toPx(),
+                    center = center,
+                    style = Stroke(2.dp.toPx())
+                )
+            }
+            selectedPlayerPoint?.let { point ->
+                val center = Offset(left + point.first * scale, top + point.second * scale)
+                drawCircle(Color.Red, radius = 9.dp.toPx(), center = center)
+                drawCircle(
+                    Color.White,
+                    radius = 9.dp.toPx(),
+                    center = center,
+                    style = Stroke(2.dp.toPx())
+                )
+            }
+        }
     }
 }
