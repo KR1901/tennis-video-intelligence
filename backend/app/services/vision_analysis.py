@@ -406,12 +406,16 @@ def run_analysis_job(
 
     try:
         while sampled < maximum_samples:
-            ok, frame = capture.read()
+            ok = capture.grab()
             if not ok:
                 break
             current_index = frame_index
             frame_index += 1
             if current_index % stride != 0:
+                continue
+
+            ok, frame = capture.retrieve()
+            if not ok or frame is None:
                 continue
 
             sampled += 1
