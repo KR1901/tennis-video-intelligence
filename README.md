@@ -2,7 +2,7 @@
 
 AI-assisted tennis match analysis from video. The long-term goal is to turn a match recording into video-linked, court-calibrated visual analytics: player positioning, serve and return patterns, shot placement, rally structure, movement heatmaps and tactical reports.
 
-> **Project status: interactive prototype.** The repository now contains a FastAPI video-ingestion and media-inspection API, manual court calibration / coordinate projection, and an Android Jetpack Compose client for the upload-to-measurement workflow. It does **not** yet detect players or balls automatically, classify tennis events, or calculate match statistics.
+> **Project status: research / working prototype.** The repository contains a FastAPI video-ingestion and analysis API, an Android Jetpack Compose client, manual court calibration, heuristic court suggestions, generic person/ball candidate detection, position heatmaps, manual event review and SVG report export. The current CV detectors are not trained or validated for tennis and must not be treated as official match statistics without human review.
 
 ## Product direction
 
@@ -15,25 +15,23 @@ The analysis pipeline is designed around the following stages:
 
 1. **Ingest** — validate, store and fingerprint the source video.
 2. **Inspect** — probe codec, duration, frame rate, resolution and audio/video streams.
-3. **Calibrate** — currently, preview a video frame, manually select four court corners and map image coordinates to real court coordinates; automatic court-keypoint detection is planned.
-4. **Track** — detect both players and the ball across frames, maintaining identities through camera changes where possible.
-5. **Recognise events** — detect serves, contacts, bounces, rally boundaries and point endings.
-6. **Calculate** — derive statistics from verified events and calibrated coordinates.
-7. **Visualise** — generate court maps, timelines, heatmaps, comparisons and exportable infographics.
+3. **Calibrate** — use a manual four-corner selection or inspect a heuristic green-court suggestion before mapping image coordinates to court coordinates.
+4. **Detect candidates** — run generic OpenCV person proposals and colour-based tennis-ball candidates on sampled frames; these are unverified and are not tennis-trained multi-object tracks.
+5. **Review events** — inspect low-confidence trajectory-change candidates, accept/reject/relabel them, or add a manually confirmed event with a timestamp.
+6. **Calculate** — derive event counts and positioning summaries; serve/shot/rally/tactical event counts only use human-accepted labels.
+7. **Visualise** — inspect player-position heatmaps and export an SVG positioning report.
 
-## First MVP target
+## Current prototype workflow
 
-The first useful end-to-end milestone is deliberately narrow:
+- Upload and inspect a tennis video.
+- Preview any timestamped frame.
+- Manually calibrate the four outer court corners, or review a heuristic green-region corner suggestion.
+- Project a selected foot / ground-contact point into court metres.
+- Start a sampled CV analysis and review near/far position candidates and heatmaps.
+- Review automatic event candidates or add manually confirmed event labels.
+- Export the positioning report as SVG.
 
-- Upload a match video.
-- Probe and inspect the video.
-- Manually calibrate the court on a stable frame by selecting its four outer corners.
-- Manually select a player's foot / ground-contact point and convert it to metres relative to the chosen baseline.
-- Keep the selected frame timestamp and coordinate provenance.
-
-The next milestone is automatic court-keypoint detection and player tracking, with quality scoring and review. The interactive prototype's manual measurement is a calibration proof of concept, not a match-level average-position report.
-
-Ball tracking and shot/event recognition follow after player tracking and court calibration can be measured reliably.
+The prototype does not yet provide reliable player identity tracking, validated ball tracking, automatic serve/shot recognition, or production-quality match statistics. The generic HOG / colour-blob detectors are intentionally labelled as candidates.
 
 ## Repository layout
 
@@ -73,11 +71,15 @@ curl -X POST "http://127.0.0.1:8000/api/v1/videos" \\
   -F "file=@/path/to/your-match.mp4"
 ```
 
-The API checks the filename extension, declared content type and configured size cap, stores the file in the configured local storage directory and returns a video ID. Then call `POST /api/v1/videos/{video_id}/inspect` to use FFmpeg/ffprobe to inspect the media container and record available duration, resolution, frame rate, codec, rotation and file-size metadata. `GET /api/v1/videos/{video_id}` returns the stored status and inspection result. `GET /api/v1/videos/{video_id}/frame?timestamp_seconds=12.5` extracts a JPEG preview. Submit the four outer court corners (far-left, far-right, near-right, near-left) to `POST /api/v1/videos/{video_id}/calibrations`; then use the returned calibration ID with the `/project` endpoint to convert a selected image point into court-plane metres. This is media inspection, not tennis analysis: player/ball tracking and match statistics have not yet been implemented. The current storage adapter is for local development; production storage, database persistence, background jobs and access controls are planned separately.
+The API validates uploads, inspects media with ffprobe, extracts timestamped frames, stores manual court calibrations, suggests green-region court corners for human confirmation, and starts a local background CV analysis job. Use `POST /api/v1/videos/{video_id}/analyses` to start the job, `GET /api/v1/analyses/{analysis_id}` for status and positioning, `GET /api/v1/analyses/{analysis_id}/events` to review candidates, and the `/events` POST routes to accept/reject/relabel or add human-confirmed events. `GET /api/v1/analyses/{analysis_id}/report.svg` exports an SVG. These endpoints are documented at `/docs`. The current storage adapter uses local files and in-process background tasks; authentication, durable database/queue, multi-user isolation and private object storage are not yet implemented.
 
 ## Android prototype
 
-See [the Android setup and usage guide](android/README.md). It includes the current local upload, frame preview and manual calibration workflow. The debug Android build is checked by the Android CI workflow.
+See [the Android setup and usage guide](android/README.md). The app includes upload/inspection, court-corner suggestions, visible calibration taps, baseline projection, analysis progress, position heatmaps, event review, manual event entry and SVG report export. Debug and release builds are checked by GitHub Actions.
+
+## Release signing
+
+The Android release workflow produces a signed APK only when all four repository Actions secrets are configured: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Without them it deliberately publishes only an unsigned release artifact, not a production GitHub Release. See [Android release setup](android/README.md#release-signing-android).
 
 ## Configuration
 
