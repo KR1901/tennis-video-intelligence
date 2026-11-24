@@ -75,6 +75,10 @@ class VideoUploadJobService : JobService() {
                 UploadRuntimeStore.markPaused(this@VideoUploadJobService)
                 throw cancelled
             } catch (error: Exception) {
+                if (workerJob?.isActive != true) {
+                    UploadRuntimeStore.markPaused(this@VideoUploadJobService)
+                    return@launch
+                }
                 val retry = isRetryable(error)
                 if (retry) {
                     UploadRuntimeStore.markPaused(this@VideoUploadJobService)
