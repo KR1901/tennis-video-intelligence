@@ -818,6 +818,10 @@ private fun LocalTennisVideoApp() {
                                                             withContext(Dispatchers.IO) {
                                                                 LocalProjectStore.setCourtCorners(context, id, points)
                                                             }
+                                                            courtRevision++
+                                                            project = withContext(Dispatchers.IO) {
+                                                                LocalProjectStore.load(context, id)
+                                                            }
                                                             message = "Court corner " + points.size + " saved locally."
                                                         }
                                                     }
