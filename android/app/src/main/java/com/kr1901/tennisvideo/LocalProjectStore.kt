@@ -254,7 +254,8 @@ internal object LocalProjectStore {
         id: String,
         timestampMs: Long,
         eventType: String,
-        note: String
+        note: String,
+        measurement: CourtPositionMeasurement? = null
     ) {
         update(context, id) { project ->
             val events = project.optJSONArray("events") ?: JSONArray()
@@ -267,6 +268,14 @@ internal object LocalProjectStore {
                     .put("confidence", 1.0)
                     .put("review_status", "accepted")
                     .put("note", note)
+                    .apply {
+                        if (measurement != null) {
+                            put("court_x_m", measurement.xMeters)
+                            put("court_y_m", measurement.yMeters)
+                            put("player_end", measurement.playerEnd)
+                            put("baseline_distance_m", measurement.baselineDistanceMeters)
+                        }
+                    }
             )
             project.put("events", events)
         }
