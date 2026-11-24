@@ -143,7 +143,8 @@ class ResumableVideoStorage:
                         bytes_written += len(block)
                         if bytes_written > CHUNK_BYTES:
                             raise UploadTooLarge(
-                                f"Each upload chunk must be at most {CHUNK_BYTES // (1024 * 1024)} MB."
+                                "Each upload chunk must be at most "
+                                f"{CHUNK_BYTES // (1024 * 1024)} MB."
                             )
                         if current_offset + bytes_written > total_size:
                             raise UploadTooLarge("Chunk would exceed the declared upload length.")
