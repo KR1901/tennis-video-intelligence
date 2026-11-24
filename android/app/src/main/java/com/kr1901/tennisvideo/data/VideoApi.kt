@@ -69,6 +69,11 @@ class VideoApi(
             serverState.first
         } catch (error: IOException) {
             if (error.message?.contains("HTTP 404") == true) {
+                val alreadyCompleted = runCatching { getVideo(uploadId) }.getOrNull()
+                if (alreadyCompleted != null) {
+                    uploadPreferences?.edit()?.remove(preferenceKey)?.apply()
+                    return alreadyCompleted
+                }
                 uploadPreferences?.edit()?.remove(preferenceKey)?.apply()
                 uploadId = createSession()
                 0L
