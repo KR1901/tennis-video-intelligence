@@ -27,14 +27,19 @@ Frame sampler (currently 1 fps, 160 x 90)
 Private app storage (project JSON + sample timeline)
         |
         +---- manual court-corner taps
+        v
+4-point homography -> court plane in metres
+        |
+        +---- manually tapped player ground point + signed baseline distance
         +---- CSV export
 ```
 
-The current implementation deliberately exposes only coarse frame signals. It does not yet claim to locate players or the ball, classify shots, calculate court positions, or produce tactical statistics.
+The current implementation deliberately exposes only coarse frame signals for automated sampling. It does not automatically locate players or the ball, classify shots, or produce tactical statistics. It can calculate a court coordinate only after the user manually taps all four court corners and a player's ground point in the same frame; it does not track that player between frames.
 
 ## Processing and persistence
 
 - The app requests a persistable read grant for the chosen document URI; it does not duplicate the source video.
+- Four user-tapped outer doubles-court corners define a projective homography to a 10.97 m × 23.77 m court plane. The UI can save a manually tapped foot/ground-contact point in court metres and signed distance relative to the near or far baseline.
 - Metadata inspection and frame extraction use Android `MediaMetadataRetriever`.
 - The local input ceiling is 4,768 MiB. The app rejects files larger than this and files whose provider cannot report a verifiable size.
 - WorkManager processes at most 24 one-second samples per work request, then queues a uniquely named continuation. This keeps individual jobs bounded and makes pending work durable across process exit and device restart. Android retains control over execution timing.
