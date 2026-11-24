@@ -59,7 +59,7 @@ The repository still contains the original FastAPI prototype for development and
 
 ## Release signing
 
-The release workflow currently builds version `0.4.0`. A signed APK is produced only when the repository has all four Actions secrets configured:
+The release workflow currently builds version `0.5.0`. A signed APK is produced only when the repository has all four Actions secrets configured:
 
 - `ANDROID_KEYSTORE_BASE64` — base64-encoded keystore file.
 - `ANDROID_KEYSTORE_PASSWORD` — keystore password.
