@@ -61,6 +61,28 @@ internal object LocalProjectStore {
     }
 
     @Synchronized
+    fun listProjects(context: Context): List<JSONObject> {
+        return directory(context).listFiles()
+            ?.asSequence()
+            ?.filter { it.isFile && it.extension == "json" }
+            ?.sortedByDescending { it.lastModified() }
+            ?.mapNotNull { file -> runCatching { JSONObject(file.readText()) }.getOrNull() }
+            ?.toList()
+            .orEmpty()
+    }
+
+    @Synchronized
+    fun storageUsageBytes(context: Context): Long {
+        fun totalBytes(file: File): Long {
+            if (!file.exists()) return 0L
+            if (file.isFile) return file.length()
+            return file.listFiles()?.sumOf(::totalBytes) ?: 0L
+        }
+        return totalBytes(directory(context)) +
+            totalBytes(File(context.filesDir, "remote_videos"))
+    }
+
+    @Synchronized
     fun delete(context: Context, id: String): Boolean {
         val project = load(context, id) ?: return false
         val sourceUri = runCatching { Uri.parse(project.optString("content_uri")) }.getOrNull()
