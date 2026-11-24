@@ -141,9 +141,7 @@ def calculate_reviewed_match_metrics(job: dict[str, Any]) -> dict[str, Any]:
     all_events = job.get("events", [])
     total_event_count = len(all_events) if isinstance(all_events, list) else 0
 
-    serve_attempt_events = [
-        event for event in events if event.get("event_type") == "serve_attempt"
-    ]
+    serve_attempt_events = [event for event in events if event.get("event_type") == "serve_attempt"]
     serve_bounces = [event for event in events if event.get("event_type") == "serve_bounce"]
     # A serve-attempt label and its bounce/location label describe one attempt.
     # Prefer explicit attempt labels; use legacy bounce labels only when no attempts were tagged.
