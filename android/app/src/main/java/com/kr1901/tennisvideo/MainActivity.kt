@@ -750,6 +750,43 @@ private fun LocalTennisVideoApp() {
                                 color = AppMuted,
                                 fontSize = 12.sp
                             )
+                            OutlinedButton(
+                                onClick = {
+                                    val bitmapForSuggestion = frameBitmap
+                                    val id = projectId
+                                    if (bitmapForSuggestion != null && id != null) scope.launch {
+                                        busy = true
+                                        try {
+                                            val suggestion = withContext(Dispatchers.Default) {
+                                                CourtCalibrationSuggester.suggest(bitmapForSuggestion)
+                                            }
+                                            if (suggestion == null) {
+                                                message = "No usable green-court region was found in this frame. Tap the four corners manually."
+                                            } else {
+                                                courtCorners.clear()
+                                                courtCorners.addAll(suggestion)
+                                                withContext(Dispatchers.IO) {
+                                                    LocalProjectStore.setCourtCorners(context, id, suggestion)
+                                                }
+                                                message = "Approximate green-region corners suggested. Check the overlay and correct them before trusting any metre measurement."
+                                            }
+                                        } catch (error: Exception) {
+                                            message = "Court-corner suggestion failed: " + (error.message ?: "unknown error")
+                                        } finally {
+                                            busy = false
+                                        }
+                                    }
+                                },
+                                enabled = !busy && frameBitmap != null,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Suggest court corners from green region")
+                            }
+                            Text(
+                                "Suggestion is colour-based only. It is not automatic line recognition; verify all four points against the actual court.",
+                                color = AppMuted,
+                                fontSize = 11.sp
+                            )
                         } else {
                             Text("Frame preview is not available yet.", color = AppMuted, fontSize = 13.sp)
                         }
