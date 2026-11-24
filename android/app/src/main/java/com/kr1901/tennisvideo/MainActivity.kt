@@ -336,6 +336,69 @@ private fun LocalTennisVideoApp() {
         }
     )
 
+    val reportSvgSaver = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("image/svg+xml"),
+        onResult = { uri ->
+            val id = projectId
+            if (uri != null && id != null) scope.launch {
+                try {
+                    val data = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+                        ?: error("Project was not found")
+                    val svg = withContext(Dispatchers.Default) { LocalReportRenderer.renderSvg(data) }
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(svg) }
+                            ?: error("Could not open the selected destination")
+                    }
+                    message = "Court infographic SVG exported."
+                } catch (error: Exception) {
+                    message = "SVG export failed: " + (error.message ?: "unknown error")
+                }
+            }
+        }
+    )
+
+    val reportPngSaver = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("image/png"),
+        onResult = { uri ->
+            val id = projectId
+            if (uri != null && id != null) scope.launch {
+                try {
+                    val data = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+                        ?: error("Project was not found")
+                    val bytes = withContext(Dispatchers.Default) { LocalReportRenderer.renderPng(data) }
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                            ?: error("Could not open the selected destination")
+                    }
+                    message = "Court infographic PNG exported."
+                } catch (error: Exception) {
+                    message = "PNG export failed: " + (error.message ?: "unknown error")
+                }
+            }
+        }
+    )
+
+    val reportPdfSaver = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf"),
+        onResult = { uri ->
+            val id = projectId
+            if (uri != null && id != null) scope.launch {
+                try {
+                    val data = withContext(Dispatchers.IO) { LocalProjectStore.load(context, id) }
+                        ?: error("Project was not found")
+                    val bytes = withContext(Dispatchers.Default) { LocalReportRenderer.renderPdf(data) }
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                            ?: error("Could not open the selected destination")
+                    }
+                    message = "Court infographic PDF exported."
+                } catch (error: Exception) {
+                    message = "PDF export failed: " + (error.message ?: "unknown error")
+                }
+            }
+        }
+    )
+
     val sampleArray = project?.optJSONArray("samples") ?: JSONArray()
     val recentSampleCount = sampleArray.length()
     val sampleCount = project?.optInt("sample_count", recentSampleCount) ?: recentSampleCount
@@ -900,7 +963,7 @@ private fun LocalTennisVideoApp() {
                             color = AppMuted,
                             fontSize = 12.sp
                         )
-                        CourtMiniMap(players = latestPlayers)
+                        CourtMiniMap(players = latestPlayers, samples = sampleArray)
                         for (index in 0 until latestPlayers.length()) {
                             val player = latestPlayers.optJSONObject(index) ?: continue
                             if (!player.has("court_x_m")) continue
@@ -1023,6 +1086,32 @@ private fun LocalTennisVideoApp() {
             }
 
             Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("6 · Export visual report", fontWeight = FontWeight.Bold, color = AppInk)
+                    Text(
+                        "Create a court infographic using calibrated player trails, ball detections and manually reviewed event locations. Empty or uncalibrated observations are omitted instead of guessed.",
+                        color = AppMuted,
+                        fontSize = 12.sp
+                    )
+                    OutlinedButton(
+                        onClick = { reportSvgSaver.launch("tennis-video-court-report.svg") },
+                        enabled = project != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Export editable SVG infographic") }
+                    OutlinedButton(
+                        onClick = { reportPngSaver.launch("tennis-video-court-report.png") },
+                        enabled = project != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Export PNG infographic") }
+                    OutlinedButton(
+                        onClick = { reportPdfSaver.launch("tennis-video-analysis-report.pdf") },
+                        enabled = project != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Export PDF report") }
+                }
+            }
+
+            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Privacy and current limits", fontWeight = FontWeight.Bold, color = AppInk)
                     Text(
@@ -1051,7 +1140,7 @@ private fun LocalTennisVideoApp() {
 }
 
 @Composable
-private fun CourtMiniMap(players: JSONArray) {
+private fun CourtMiniMap(players: JSONArray, samples: JSONArray) {
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
@@ -1067,6 +1156,8 @@ private fun CourtMiniMap(players: JSONArray) {
         val courtHeight = bottom - top
         fun mapX(value: Double) = (left + ((value + 5.485) / 10.97) * courtWidth).toFloat()
         fun mapY(value: Double) = (top + ((value + 11.885) / 23.77) * courtHeight).toFloat()
+        fun playerColor(playerId: String) =
+            if (playerId == "P1") Color(0xFFFFD166) else Color(0xFF80D7FF)
 
         drawRect(
             color = Color.White,
@@ -1090,6 +1181,47 @@ private fun CourtMiniMap(players: JSONArray) {
             Offset((singlesLeft + singlesRight) / 2f, mapY(6.4)),
             strokeWidth = 1.5f
         )
+
+        val previous = HashMap<String, Offset>()
+        for (sampleIndex in 0 until samples.length()) {
+            val sample = samples.optJSONObject(sampleIndex) ?: continue
+            val playerArray = sample.optJSONArray("players") ?: JSONArray()
+            for (index in 0 until playerArray.length()) {
+                val player = playerArray.optJSONObject(index) ?: continue
+                if (!player.has("court_x_m") || !player.has("court_y_m")) continue
+                val x = player.optDouble("court_x_m")
+                val y = player.optDouble("court_y_m")
+                if (x !in -5.485..5.485 || y !in -11.885..11.885) continue
+                val id = player.optString("player_id")
+                val point = Offset(mapX(x), mapY(y))
+                val color = playerColor(id)
+                drawCircle(color.copy(alpha = 0.11f), radius = 11f, center = point)
+                previous[id]?.let { last ->
+                    drawLine(
+                        color.copy(alpha = 0.48f),
+                        last,
+                        point,
+                        strokeWidth = 2.5f
+                    )
+                }
+                previous[id] = point
+            }
+            val ball = sample.optJSONObject("ball")
+            if (ball?.optBoolean("detected", false) == true &&
+                ball.has("court_x_m") && ball.has("court_y_m")
+            ) {
+                val x = ball.optDouble("court_x_m")
+                val y = ball.optDouble("court_y_m")
+                if (x in -5.485..5.485 && y in -11.885..11.885) {
+                    drawCircle(
+                        Color.Yellow.copy(alpha = 0.40f),
+                        radius = 5f,
+                        center = Offset(mapX(x), mapY(y))
+                    )
+                }
+            }
+        }
+
         for (index in 0 until players.length()) {
             val player = players.optJSONObject(index) ?: continue
             if (!player.has("court_x_m") || !player.has("court_y_m")) continue
@@ -1097,7 +1229,7 @@ private fun CourtMiniMap(players: JSONArray) {
             val y = player.optDouble("court_y_m")
             if (x !in -5.485..5.485 || y !in -11.885..11.885) continue
             val point = Offset(mapX(x), mapY(y))
-            drawCircle(if (player.optString("player_id") == "P1") Color(0xFFFFD166) else Color(0xFF80D7FF), 10f, point)
+            drawCircle(playerColor(player.optString("player_id")), 10f, point)
             drawCircle(Color.White, 3f, point)
         }
     }
