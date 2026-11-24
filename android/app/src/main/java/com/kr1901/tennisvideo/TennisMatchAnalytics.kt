@@ -22,6 +22,14 @@ internal data class LocationBreakdown(
         if (total == 0) 0.0 else (counts[label] ?: 0) * 100.0 / total
 }
 
+internal data class ReturnPositionSummary(
+    val playerId: String,
+    val serveZone: String,
+    val observations: Int,
+    val averageSignedBaselineDistanceMeters: Double,
+    val behindBaselinePercent: Double
+)
+
 internal data class RallyReviewSummary(
     val completedRallies: Int,
     val averageDurationSeconds: Double,
@@ -34,6 +42,7 @@ internal data class TennisMatchAnalytics(
     val serveZones: LocationBreakdown,
     val shotDepths: LocationBreakdown,
     val shotDirections: LocationBreakdown,
+    val returnPositions: List<ReturnPositionSummary>,
     val rallies: RallyReviewSummary,
     val acceptedEvents: Int,
     val acceptedLocatedEvents: Int,
@@ -46,6 +55,7 @@ internal data class TennisMatchAnalytics(
             serveZones = LocationBreakdown(emptyMap(), 0),
             shotDepths = LocationBreakdown(emptyMap(), 0),
             shotDirections = LocationBreakdown(emptyMap(), 0),
+            returnPositions = emptyList(),
             rallies = RallyReviewSummary(0, 0.0, 0.0, 0),
             acceptedEvents = 0,
             acceptedLocatedEvents = 0,
@@ -71,30 +81,12 @@ internal object TennisMatchAnalytics {
     private const val SERVICE_LINE_DISTANCE_FROM_NET_M = 6.4
     private const val INNER_T_ZONE_M = 1.37
     private const val BODY_ZONE_M = 2.74
+    private const val MAX_RETURN_POSITION_WINDOW_MS = 1_200L
 
     fun calculate(
         samples: Sequence<JSONObject>,
         events: JSONArray
     ): TennisMatchAnalytics {
-        val accumulators = linkedMapOf("P1" to PlayerAccumulator("P1"), "P2" to PlayerAccumulator("P2"))
-        var calibratedPlayerObservations = 0
-
-        samples.forEach { sample ->
-            val players = sample.optJSONArray("players") ?: JSONArray()
-            for (index in 0 until players.length()) {
-                val player = players.optJSONObject(index) ?: continue
-                val id = player.optString("player_id")
-                val accumulator = accumulators[id] ?: continue
-                val x = player.optDouble("court_x_m", Double.NaN)
-                val y = player.optDouble("court_y_m", Double.NaN)
-                val signedBaseline = player.optDouble("baseline_distance_m", Double.NaN)
-                val timestamp = sample.optLong("timestamp_ms", -1L)
-                if (!isValidCourtObservation(x, y, signedBaseline) || timestamp < 0L) continue
-                accumulator.add(timestamp, x, y, signedBaseline)
-                calibratedPlayerObservations++
-            }
-        }
-
         val accepted = ArrayList<ReviewedEvent>()
         var pendingCandidates = 0
         for (index in 0 until events.length()) {
@@ -109,10 +101,12 @@ internal object TennisMatchAnalytics {
                         val y = event.optDouble("court_y_m", Double.NaN)
                         accepted.add(
                             ReviewedEvent(
+                                eventId = event.optString("event_id"),
                                 timestampMs = time,
                                 type = type,
                                 x = x,
                                 y = y,
+                                playerEnd = event.optString("player_end").takeIf { it == "near" || it == "far" },
                                 hasCourtLocation = isValidCourtLocation(x, y)
                             )
                         )
@@ -121,6 +115,43 @@ internal object TennisMatchAnalytics {
             }
         }
         accepted.sortBy { it.timestampMs }
+        val locatedServeEvents = accepted.filter { it.hasCourtLocation && isServeType(it.type) }
+        val nearestReturnObservation = HashMap<Pair<String, String>, NearestReturnObservation>()
+
+        val accumulators = linkedMapOf("P1" to PlayerAccumulator("P1"), "P2" to PlayerAccumulator("P2"))
+        var calibratedPlayerObservations = 0
+        samples.forEach { sample ->
+            val players = sample.optJSONArray("players") ?: JSONArray()
+            val sampleTimestamp = sample.optLong("timestamp_ms", -1L)
+            if (sampleTimestamp < 0L) return@forEach
+            for (index in 0 until players.length()) {
+                val player = players.optJSONObject(index) ?: continue
+                val id = player.optString("player_id")
+                val accumulator = accumulators[id] ?: continue
+                val x = player.optDouble("court_x_m", Double.NaN)
+                val y = player.optDouble("court_y_m", Double.NaN)
+                val signedBaseline = player.optDouble("baseline_distance_m", Double.NaN)
+                if (!isValidCourtObservation(x, y, signedBaseline)) continue
+                accumulator.add(sampleTimestamp, x, y, signedBaseline)
+                calibratedPlayerObservations++
+
+                val playerEnd = player.optString("player_end").takeIf { it == "near" || it == "far" }
+                    ?: if (y >= 0.0) "near" else "far"
+                locatedServeEvents.forEach { serve ->
+                    if (serve.playerEnd != playerEnd) return@forEach
+                    val deltaMs = abs(sampleTimestamp - serve.timestampMs)
+                    if (deltaMs > MAX_RETURN_POSITION_WINDOW_MS) return@forEach
+                    val key = serve.eventId to id
+                    val previous = nearestReturnObservation[key]
+                    if (previous == null || deltaMs < previous.deltaMs) {
+                        nearestReturnObservation[key] = NearestReturnObservation(
+                            deltaMs = deltaMs,
+                            signedBaselineDistanceMeters = signedBaseline
+                        )
+                    }
+                }
+            }
+        }
 
         val serveCounts = linkedMapOf(
             "T" to 0,
@@ -146,11 +177,26 @@ internal object TennisMatchAnalytics {
             }
         }
 
+        val returnAccumulators = HashMap<Pair<String, String>, ReturnAccumulator>()
+        locatedServeEvents.forEach { serve ->
+            val zone = serveZone(serve.x, serve.y)
+            listOf("P1", "P2").forEach { playerId ->
+                val nearest = nearestReturnObservation[serve.eventId to playerId] ?: return@forEach
+                val key = playerId to zone
+                returnAccumulators.getOrPut(key) { ReturnAccumulator(playerId, zone) }
+                    .add(nearest.signedBaselineDistanceMeters)
+            }
+        }
+        val returnSummaries = returnAccumulators.values
+            .map { it.toSummary() }
+            .sortedWith(compareBy<ReturnPositionSummary> { it.playerId }.thenBy { it.serveZone })
+
         return TennisMatchAnalytics(
             players = accumulators.values.filter { it.observations > 0 }.map { it.toSummary() },
             serveZones = LocationBreakdown(serveCounts, serveCounts.values.sum()),
             shotDepths = LocationBreakdown(depthCounts, depthCounts.values.sum()),
             shotDirections = LocationBreakdown(directionCounts, directionCounts.values.sum()),
+            returnPositions = returnSummaries,
             rallies = rallySummary(accepted),
             acceptedEvents = accepted.size,
             acceptedLocatedEvents = locatedEvents,
@@ -260,12 +306,42 @@ internal object TennisMatchAnalytics {
         if (isEmpty()) 0.0 else average()
 
     private data class ReviewedEvent(
+        val eventId: String,
         val timestampMs: Long,
         val type: String,
         val x: Double,
         val y: Double,
+        val playerEnd: String?,
         val hasCourtLocation: Boolean
     )
+
+    private data class NearestReturnObservation(
+        val deltaMs: Long,
+        val signedBaselineDistanceMeters: Double
+    )
+
+    private class ReturnAccumulator(
+        private val playerId: String,
+        private val serveZone: String
+    ) {
+        private var observations = 0
+        private var behind = 0
+        private var distanceTotal = 0.0
+
+        fun add(signedBaselineDistanceMeters: Double) {
+            observations++
+            distanceTotal += signedBaselineDistanceMeters
+            if (signedBaselineDistanceMeters > 0.0) behind++
+        }
+
+        fun toSummary() = ReturnPositionSummary(
+            playerId = playerId,
+            serveZone = serveZone,
+            observations = observations,
+            averageSignedBaselineDistanceMeters = distanceTotal / observations,
+            behindBaselinePercent = behind * 100.0 / observations
+        )
+    }
 
     private data class RallyRecord(
         val durationSeconds: Double,
