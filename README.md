@@ -13,7 +13,8 @@ An Android-first tennis video analysis prototype. The current client processes m
 - Project player feet and ball candidate points into court metres after a valid four-corner calibration.
 - Review event candidates with an independent label editor per candidate; accept/reject/relabel them without one candidate changing another. Manually enter timestamped serve/shot/event locations.
 - Inspect a mini-court with recent player trails, density dots and ball candidates.
-- Calculate review-backed player baseline summaries, manually reviewed serve T/body/wide placement, shot depth/direction bins and rallies between explicit point-start/end markers. Unreviewed events are excluded.
+- Choose quick 2.5 fps, balanced 5 fps or detailed 10 fps analysis sampling; the rate persists across background continuations.
+- Calculate review-backed player baseline summaries, manually reviewed serve T/body/wide placement, sampled returner position near accepted serve markers, shot depth/direction bins and rallies between explicit point-start/end markers. Unreviewed events are excluded.
 - Export the full sampled timeline, event review and manual positions as CSV, plus a reviewed match-metrics CSV and SVG/PNG/PDF court reports.
 
 See the [Android guide](android/README.md), [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md).
