@@ -336,8 +336,8 @@ private fun TennisVideoApp() {
         }
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
+    Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
@@ -349,10 +349,35 @@ private fun TennisVideoApp() {
                         )
                     )
                 )
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val glowRadius = size.minDimension * 0.46f
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFF91DCCF).copy(alpha = 0.36f), Color.Transparent),
+                        center = Offset(size.width * 0.12f, size.height * 0.16f),
+                        radius = glowRadius
+                    ),
+                    radius = glowRadius,
+                    center = Offset(size.width * 0.12f, size.height * 0.16f)
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFB6C3F2).copy(alpha = 0.38f), Color.Transparent),
+                        center = Offset(size.width * 0.92f, size.height * 0.43f),
+                        radius = glowRadius
+                    ),
+                    radius = glowRadius,
+                    center = Offset(size.width * 0.92f, size.height * 0.43f)
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = "Tennis Video Intelligence",
