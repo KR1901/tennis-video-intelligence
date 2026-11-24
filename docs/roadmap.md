@@ -20,7 +20,8 @@
 ## Milestone 2 — court and player positioning
 
 - [ ] Court-keypoint model and camera-segment detection.
-- [ ] Homography calibration with quality score and manual correction.
+- [x] Homography estimation, image-to-court projection and signed baseline-distance utilities.
+- [ ] Calibration quality score, automatic keypoint pairing and manual correction.
 - [ ] Player detection and tracking with identity review.
 - [ ] Ground-contact estimate and calibrated player coordinates.
 - [ ] Baseline distance in metres and positioning heatmaps.
