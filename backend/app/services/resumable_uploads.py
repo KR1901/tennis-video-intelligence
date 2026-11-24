@@ -4,9 +4,10 @@ import json
 import os
 import shutil
 import threading
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 from uuid import UUID, uuid4
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
