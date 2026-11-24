@@ -649,6 +649,7 @@ def run_analysis_job(
         ),
         "players": players,
         "position_heatmaps": heatmaps,
+        "position_samples": player_samples,
         "ball_detector": "HSV compact-blob candidate detector",
         "ball_candidates": len(ball_trace),
         "ball_trace": ball_trace,
@@ -709,6 +710,12 @@ def calculate_reviewed_match_metrics(job: dict[str, Any]) -> dict[str, Any]:
             if item.get("court_x_m") is not None and item.get("court_y_m") is not None
         ]
 
+    serve_plus_one = [event for event in accepted if event.get("event_type") == "serve_plus_one"]
+    return_plus_one = [event for event in accepted if event.get("event_type") == "return_plus_one"]
+    winners = [event for event in accepted if event.get("event_type") == "winner"]
+    forced_errors = [event for event in accepted if event.get("event_type") == "forced_error"]
+    unforced_errors = [event for event in accepted if event.get("event_type") == "unforced_error"]
+
     return {
         "accepted_event_count": len(accepted),
         "serve_placement": {
@@ -729,8 +736,18 @@ def calculate_reviewed_match_metrics(job: dict[str, Any]) -> dict[str, Any]:
             ),
             "status": "requires_reviewed_point_and_contact_labels",
         },
+        "serve_plus_one": {
+            "reviewed_count": len(serve_plus_one),
+            "player_labels": [event.get("player_id", "unknown") for event in serve_plus_one],
+        },
+        "return_plus_one": {
+            "reviewed_count": len(return_plus_one),
+            "player_labels": [event.get("player_id", "unknown") for event in return_plus_one],
+        },
         "winner_error_classification": {
-            "status": "not_inferred",
-            "note": "Winner and error labels require human-labelled or validated event evidence.",
+            "status": "based_on_human_review",
+            "winners": len(winners),
+            "forced_errors": len(forced_errors),
+            "unforced_errors": len(unforced_errors),
         },
     }
