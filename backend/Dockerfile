@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     TVI_ENVIRONMENT=production \
     TVI_STORAGE_DIR=/data/videos \
-    TVI_MAX_UPLOAD_MB=10240
+    TVI_MAX_UPLOAD_MB=4768
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg libglib2.0-0 libgl1 \
