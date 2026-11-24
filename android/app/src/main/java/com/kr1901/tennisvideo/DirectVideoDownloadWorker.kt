@@ -92,6 +92,14 @@ class DirectVideoDownloadWorker(
             val activeConnection = connection ?: return Result.failure()
             try {
                 val append = startOffset > 0L && responseCode == HTTP_PARTIAL_CONTENT
+                if (responseCode == HTTP_PARTIAL_CONTENT) {
+                    val rangeStart = parseContentRangeStart(activeConnection.getHeaderField("Content-Range"))
+                    val expectedStart = if (append) startOffset else 0L
+                    if (rangeStart != expectedStart) {
+                        partialFile.delete()
+                        return Result.retry()
+                    }
+                }
                 if (responseCode != HTTP_OK && responseCode != HTTP_PARTIAL_CONTENT) {
                     if (responseCode >= 500 || responseCode == 408 || responseCode == 429) {
                         throw IOException("Video server returned HTTP $responseCode")
@@ -267,6 +275,11 @@ class DirectVideoDownloadWorker(
         }
     }
 
+    private fun parseContentRangeStart(value: String?): Long? {
+        val match = CONTENT_RANGE_PATTERN.find(value.orEmpty()) ?: return null
+        return match.groupValues.getOrNull(1)?.toLongOrNull()
+    }
+
     private fun stableName(value: String): String {
         val digest = java.security.MessageDigest.getInstance("SHA-256")
             .digest(value.toByteArray(Charsets.UTF_8))
@@ -297,6 +310,7 @@ class DirectVideoDownloadWorker(
         private const val HTTP_OK = 200
         private const val HTTP_PARTIAL_CONTENT = 206
         private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
+        private val CONTENT_RANGE_PATTERN = Regex("^bytes\\s+(\\d+)-", RegexOption.IGNORE_CASE)
         private val ALLOWED_EXTENSIONS = setOf("mp4", "mov", "m4v", "mkv", "webm", "avi")
     }
 }
