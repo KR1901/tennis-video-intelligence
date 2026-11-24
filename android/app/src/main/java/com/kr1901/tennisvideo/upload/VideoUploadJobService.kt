@@ -37,15 +37,15 @@ class VideoUploadJobService : JobService() {
         }
 
         val totalBytes = extras.getLong(KEY_TOTAL_BYTES, 0L)
+        setNotification(
+            params,
+            UploadNotifications.NOTIFICATION_ID,
+            UploadNotifications.build(this, 0L, totalBytes),
+            JOB_END_NOTIFICATION_POLICY_DETACH
+        )
         val job = serviceScope.launch(start = CoroutineStart.LAZY) {
             val workerJob = coroutineContext[Job]
             try {
-                setNotification(
-                    params,
-                    UploadNotifications.NOTIFICATION_ID,
-                    UploadNotifications.build(this@VideoUploadJobService, 0L, totalBytes),
-                    JOB_END_NOTIFICATION_POLICY_DETACH
-                )
                 val uploadPreferences = getSharedPreferences("tvi_upload_state", MODE_PRIVATE)
                 val api = VideoApi(
                     connection.baseUrl,
