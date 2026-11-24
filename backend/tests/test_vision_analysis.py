@@ -3,8 +3,8 @@ import json
 import cv2
 import numpy as np
 
+from app.services.analysis_metrics import calculate_reviewed_match_metrics
 from app.services.vision_analysis import (
-    calculate_reviewed_match_metrics,
     detect_ball_candidate,
     detect_court_candidate,
     run_analysis_job,
