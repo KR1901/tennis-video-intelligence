@@ -63,6 +63,21 @@ uvicorn app.main:app --reload
 
 Open `http://127.0.0.1:8000/docs` for the API documentation and `http://127.0.0.1:8000/health` for the health check.
 
+### Container deployment
+
+A backend image definition is provided at `backend/Dockerfile`. Build and run it with a persistent volume and a strong token:
+
+```bash
+docker build -t tennis-video-intelligence-api ./backend
+docker run --name tvi-api --restart unless-stopped \
+  -p 8000:8000 \
+  -e TVI_API_TOKEN="$(openssl rand -hex 32)" \
+  -v tvi-video-data:/data \
+  tennis-video-intelligence-api
+```
+
+Put a TLS-terminating reverse proxy or managed HTTPS ingress in front of the container and point the Android release app at that HTTPS hostname. The volume must have at least 10 GiB plus operational headroom. This container runs one API worker for the local resumable-upload store; it is a single-instance deployment starter, not a horizontally scalable production platform.
+
 ### Upload a test video
 
 ```bash
