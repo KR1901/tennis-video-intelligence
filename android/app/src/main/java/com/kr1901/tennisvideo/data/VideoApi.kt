@@ -122,6 +122,22 @@ class VideoApi(
         return postJson("/api/v1/analyses/$analysisId/events/$eventId/review", payload)
     }
 
+
+    fun createManualEvent(
+        analysisId: String,
+        timestampSeconds: Double,
+        eventType: String,
+        playerId: String,
+        note: String
+    ): JSONObject {
+        val payload = JSONObject()
+            .put("timestamp_seconds", timestampSeconds)
+            .put("event_type", eventType)
+            .put("player_id", playerId)
+            .put("note", note)
+        return postJson("/api/v1/analyses/$analysisId/events", payload)
+    }
+
     fun getAnalysisReportSvg(analysisId: String): ByteArray {
         val connection = openConnection("/api/v1/analyses/$analysisId/report.svg", "GET")
         connection.setRequestProperty("Accept", "image/svg+xml")
