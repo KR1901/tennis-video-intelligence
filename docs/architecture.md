@@ -1,70 +1,88 @@
 # Architecture
 
-## Current Android architecture: offline-first
+## Android application: offline analysis with optional direct-link ingress
 
-The Android app is moving to a self-contained architecture. A selected video is accessed through Android's Storage Access Framework (SAF); the original file remains in the user's chosen location. No upload, API endpoint, bearer token or network permission is needed.
+The Android app is the primary product execution path. A selected local video is accessed through Android's Storage Access Framework; an authorised direct HTTPS media URL can optionally be downloaded into private app storage by a resumable WorkManager job. The video itself is never uploaded to a backend.
 
 ```text
 Android / Jetpack Compose
-        |
-        | ACTION_OPEN_DOCUMENT + persisted read grant
-        v
-Original video URI (user-controlled storage)
-        |
-        +---- MediaMetadataRetriever: metadata + frame preview
-        |
-        v
-WorkManager persistent, bounded analysis chunks
-        |
-        v
-Frame sampler (currently 1 fps, 160 x 90)
-        |
-        +---- green-pixel coverage (coarse court-colour signal)
-        +---- frame-to-frame pixel change (coarse motion signal)
-        +---- brightness + timestamp
-        |
-        v
-Private app storage (project JSON + sample timeline)
-        |
-        +---- manual court-corner taps
-        v
-4-point homography -> court plane in metres
-        |
-        +---- manually tapped player ground point + signed baseline distance
-        +---- CSV export
+   |                         |
+   | local video URI         | optional direct HTTPS video URL
+   | persisted read grant    | WorkManager + HTTPS + Range resume
+   v                         v
+User-selected source    App-private downloaded media
+           \                 /
+            \               /
+             v             v
+       MediaMetadataRetriever
+          frame decode / preview
+                    |
+                    v
+         WorkManager 5-second chunks
+           (5 fps sampling grid)
+                    |
+          +---------+----------+
+          |                    |
+          v                    v
+ MediaPipe Pose Lite       TrackNet V1
+ up to 2 generic poses    tennis-ball heatmap
+          |                    |
+          v                    v
+ P1/P2 short-term         ball candidate points
+ nearest-foot association      |
+          |                    |
+          +---------+----------+
+                    |
+          manual court-corner calibration
+          + green-region corner suggestion
+                    |
+          4-point court homography
+                    |
+          court x/y metres + signed baseline
+                    |
+          +---------+----------+
+          |                    |
+          v                    v
+    Reviewable event      Local project store
+    trajectory heuristics   JSON + append-only NDJSON
+          |                    |
+          +---------+----------+
+                    |
+           mini-court / trails / heat dots
+           CSV + SVG / PNG / PDF exports
 ```
 
-The current implementation deliberately exposes only coarse frame signals for automated sampling. It does not automatically locate players or the ball, classify shots, or produce tactical statistics. It can calculate a court coordinate only after the user manually taps all four court corners and a player's ground point in the same frame; it does not track that player between frames.
+## Inference and confidence
 
-## Processing and persistence
+- Pose Landmarker Lite estimates up to two visible human body poses. It does not know which person is Player 1 or Player 2 by tennis identity. The app associates detections between adjacent samples using a nearest-foot-point heuristic, assigning temporary P1/P2 IDs.
+- TrackNet V1 consumes three consecutive 640 × 360 frames and produces a tennis-ball probability heatmap. The current Android path samples at 5 fps; pose inference runs on alternate samples (about 2.5 fps). This is a resource trade-off, not full-frame-rate tracking.
+- Ball and pose observations retain timestamps and confidence/proposal values. Missing observations remain missing.
+- Candidate events are derived from ball-path changes and wrist proximity. They are saved as `needs_review` and never treated as confirmed match events without user action.
+- The app can manually label events and save court locations. Manual labels and model candidates remain separate data sources.
 
-- The app requests a persistable read grant for the chosen document URI; it does not duplicate the source video.
-- Four user-tapped outer doubles-court corners define a projective homography to a 10.97 m × 23.77 m court plane. The UI can save a manually tapped foot/ground-contact point in court metres and signed distance relative to the near or far baseline.
-- Metadata inspection and frame extraction use Android `MediaMetadataRetriever`.
-- The local input ceiling is 4,768 MiB. The app rejects files larger than this and files whose provider cannot report a verifiable size.
-- WorkManager processes at most 24 one-second samples per work request, then queues a uniquely named continuation. This keeps individual jobs bounded and makes pending work durable across process exit and device restart. Android retains control over execution timing.
-- Project metadata, sample rows and manual court-corner taps are stored under the app's private files directory. Re-running an analysis resets the project's prior sample timeline.
-- CSV export is written through Android's document picker; there is no server-side report dependency.
+## Court coordinate system
 
-## Next on-device pipeline stages
+The court plane uses metres, with the origin at net centre, x across court width and y along court length. The near half is positive y and the far half is negative y. Baselines are at +11.885 m and -11.885 m; doubles boundaries at x = ±5.485 m and singles sidelines at x = ±4.115 m. A four-corner projective homography maps normalized image points to the standard 10.97 m × 23.77 m doubles court.
 
-1. **Court geometry:** identify court lines/keypoints and estimate a confidence-scored image-to-court homography from the manual corners. Recalibrate when the camera pans, zooms or cuts.
-2. **Player detection:** integrate a licence-compatible on-device detector, estimate foot/ground-contact points and maintain two stable player tracks across frames.
-3. **Ball tracking:** use high-resolution adaptive frame windows around likely contact intervals; track the ball across occlusions and camera changes.
-4. **Tennis events:** infer serve, bounce, contact and point events only with confidence thresholds and review affordances.
-5. **Metrics:** derive serve location, return position, depth behind/inside baseline, shot placement and movement only from calibrated, validated observations.
-6. **Visual reports:** produce time-linked court maps, timelines and infographics on the device.
+Court calibration is manually tapped or initialized by a green-region suggestion that requires user verification. There is no trained court-line/keypoint model or camera-motion segmentation. Measurements become invalid after an unhandled camera pan, zoom or cut.
 
-Every observation should retain timestamp/frame index, model version, coordinate system, confidence and review state. Missing or uncertain observations must remain missing or uncertain rather than being filled with fabricated precision.
+## Storage and background work
+
+- Local SAF videos are not copied; a persistable read grant is retained.
+- Direct HTTPS video-file downloads use WorkManager with a connected-network constraint and resume by HTTP Range where supported. Content must be a direct video response, not a watch page, DRM stream or playlist.
+- A shared 4,768 MiB limit is applied to local inputs and downloaded files.
+- Each analysis request processes a bounded five-second segment. WorkManager chains the next segment and can resume pending work after process exit/reboot, subject to Android scheduling. Force-stop prevents automatic restart until the app is reopened.
+- Project metadata is stored as JSON and the full sample stream as append-only NDJSON. The JSON project keeps a bounded recent sample tail for UI rendering; CSV export reads the full log.
+- Downloaded source files and metadata remain in app-private storage. Original SAF videos remain in their user-selected location.
+
+## Visual outputs
+
+The mini-court displays recent calibrated P1/P2 paths, density markers, current foot positions and ball observations. SVG, PNG and PDF reports use court-calibrated observations and manually reviewed event locations. CSV exports expose the sample timeline, event review state and manual positions.
 
 ## Legacy backend
 
-The repository retains the previous FastAPI service as a research/reference implementation. It is not on the current Android execution path. GitHub Actions can build and distribute the Android APK, but the current product direction does not require a permanently running server.
+The previous FastAPI/OpenCV service remains in the repository as a research/reference implementation. It is not required by the Android application and is not the primary data or inference path. GitHub Actions builds the Android APK and retrieves the open-source model assets during the build; a permanent API server is not required.
 
-## Coordinate system
+## Validation requirements and limits
 
-The eventual court plane uses metres, with the origin at the centre of the net, x across court width and y along court length. The near half is positive y and the far half negative y. Baselines are at +11.885 m and -11.885 m; doubles boundaries at x = ±5.485 m and singles sidelines at x = ±4.115 m. A valid homography and stable camera segment are prerequisites for reporting distances in metres.
-
-## Validation requirements
-
-Before any player/ball metric is presented as reliable, benchmark it against manually labelled held-out videos from different broadcast angles, court surfaces, lighting conditions, camera movements and resolutions. Report precision, recall, tracking identity switches, calibration error in metres, dropped-frame coverage and human-review rates. A green-area heuristic or generic motion signal is not a substitute for those tests.
+The open-source models are not a fully validated tennis analytics stack. Before deriving official or decision-grade statistics, the pipeline needs a manually labelled held-out tennis video set, calibration error measurements, pose precision/recall, ball tracking precision/recall, identity switch counts, missed-frame rates, camera-cut tests, device performance/battery/thermal benchmarks and human-reviewed event accuracy. Generic pose output, colour coverage or a TrackNet point alone must not be presented as proof of a serve, bounce, shot landing, winner or player identity.
